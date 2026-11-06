@@ -161,6 +161,18 @@ main { position: relative; z-index: 2; pointer-events: none; }
 .room-hint.is-on { opacity: 1; transform: none; pointer-events: auto; }
 .room-hint strong { color: var(--ink); font-weight: 600; }
 .room-hint .btn { padding: 9px 14px; }
+.room-labels.is-live .room-label { pointer-events: auto; cursor: pointer; transition: background .2s, color .2s, border-color .2s; }
+.room-labels.is-live .room-label:hover, .room-label:focus-visible { border-color: var(--brass); color: #fff; outline: none; }
+.room-label.is-focus { background: var(--brass); color: #16110a; border-color: transparent; }
+.room-labels.is-live .room-label.is-focus:hover { color: #16110a; }
+#scene.off-plate { cursor: zoom-out; }
+.room-hint [hidden] { display: none; }
+.room-exit { position: fixed; top: 92px; right: clamp(20px, 4vw, 56px); z-index: 15; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px 10px 12px;
+  border: 1px solid var(--line); border-radius: 999px; background: rgba(9,10,10,.78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  color: var(--ink); font: 500 13px/1 var(--sans); cursor: pointer; opacity: 0; transform: translateY(-6px); pointer-events: none; transition: opacity .25s, transform .25s, border-color .2s; }
+.room-exit.is-on { opacity: 1; transform: none; pointer-events: auto; }
+.room-exit:hover { border-color: var(--brass); }
+.room-exit svg { width: 16px; height: 16px; }
 
 /* Enquire */
 .enquire .panel { width: min(520px, 100%); }
@@ -200,7 +212,9 @@ footer { position: relative; z-index: 2; background: #0a0600; border-top: 1px so
   .explore { min-height: auto; }
   .explore .panel { position: relative; top: 0; max-height: none; }
   .list { max-height: 50vh; }
-  .room-hint { left: 16px; right: 16px; top: 76px; bottom: auto; justify-content: space-between; }
+  .room-hint { left: 16px; right: 16px; bottom: 16px; justify-content: space-between; }
+  .room-hint #room-hint-text { display: none; }
+  .room-exit { top: 76px; right: 16px; }
   .room-label { font-size: 9px; padding: 2px 6px; }
   .room-label.unit { font-size: 13px; padding: 5px 9px; }
   form { grid-template-columns: 1fr; }
@@ -366,8 +380,13 @@ footer { position: relative; z-index: 2; background: #0a0600; border-top: 1px so
 <div class="room-labels" id="room-labels" aria-hidden="true"></div>
 <div class="room-hint" id="room-hint" aria-live="polite">
   <span id="room-hint-text"><strong>Floor 22</strong> · drag to turn · click a residence to switch</span>
+  <button class="btn ghost" type="button" id="room-whole" hidden>Whole floor</button>
   <button class="btn ghost" type="button" id="room-back">Back to tower</button>
 </div>
+<button class="room-exit" type="button" id="room-exit" aria-label="Exit the interior view">
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+  Exit interior
+</button>
 
 <script>
 /* ---------- Residences: invented, generated with a fixed seed so every visit matches ---------- */
@@ -538,9 +557,7 @@ window.CALDER = (function () {
   });
   document.getElementById('detail-close').addEventListener('click', () => ui.select(null));
   document.getElementById('room-back').addEventListener('click', () => ui.select(null));
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && ui.selected != null) ui.select(null);
-  });
+  document.getElementById('room-exit').addEventListener('click', () => ui.select(null));
   document.getElementById('tour-btn').addEventListener('click', () => {
     if (selectedUnit) select.value = selectedUnit.id;
     document.getElementById('enquire').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
@@ -1354,24 +1371,58 @@ function buildInterior(floor) {
     wall(furnAll, 0, 3.0, 0, 7.85);
     liftCore(furnAll, (t, x, z) => addLabel(furnAll, t, x, z));
   }
-  root.traverse((o) => {
-    if (!o.isMesh) return;
-    const glowy = o.material === MAT.glow || o.material === MAT.pane;
-    o.castShadow = !glowy;
-    o.receiveShadow = o.material !== MAT.glow;
-  });
+  mergeInterior(root, pads, owned);
   root.updateMatrixWorld(true);
   return { root, labels, pads, owned, level: floor.level };
 }
 
+/* Hundreds of little boxes become one mesh per material, so the floor draws in a few dozen calls */
+function mergeInterior(root, pads, owned) {
+  root.updateMatrixWorld(true);
+  const toRoot = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const rel = new THREE.Matrix4();
+  const byMat = new Map(), meshes = [];
+  root.traverse((o) => { if (o.isMesh && !pads.includes(o)) meshes.push(o); });
+  meshes.forEach((m) => {
+    rel.multiplyMatrices(toRoot, m.matrixWorld);
+    let g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+    g.applyMatrix4(rel);
+    if (rel.determinant() < 0) {                 /* mirrored half: flip the triangles back to face outwards */
+      Object.values(g.attributes).forEach((a) => {
+        const s = a.itemSize, arr = a.array;
+        for (let i = 0; i < a.count; i += 3) {
+          for (let c = 0; c < s; c += 1) {
+            const t = arr[(i + 1) * s + c]; arr[(i + 1) * s + c] = arr[(i + 2) * s + c]; arr[(i + 2) * s + c] = t;
+          }
+        }
+      });
+    }
+    if (!byMat.has(m.material)) byMat.set(m.material, []);
+    byMat.get(m.material).push(g);
+    m.parent.remove(m);
+  });
+  byMat.forEach((geos, mat) => {
+    const merged = mergeGeometries(geos, false);
+    geos.forEach((g) => g.dispose());
+    if (!merged) return;
+    owned.push(merged);
+    const mesh = new THREE.Mesh(merged, mat);
+    mesh.castShadow = mat !== MAT.glow && mat !== MAT.pane;
+    mesh.receiveShadow = mat !== MAT.glow;
+    root.add(mesh);
+  });
+  pads.forEach((p) => { p.receiveShadow = true; });
+}
+
 function start(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.localClippingEnabled = true;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false;     /* the furnished floor doesn't move: draw its shadows only when it changes */
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0x1a1a22, 40, 110);
@@ -1444,6 +1495,16 @@ function start(canvas) {
   const cam = { ...shotList[0] };
   let dragTheta = 0, dragVel = 0, idle = 0;
   const roomView = { level: null, k: 0, drag0: 0 };
+  const SHOT_KEYS = ['theta', 'elev', 'radius', 'ty', 'side', 'fx', 'fz'];
+  cam.fx = 0; cam.fz = 0;
+  let roomFocus = null;                 /* the room label the camera is zoomed onto, if any */
+  const focusPos = new THREE.Vector3();
+  function setFocus(label) {
+    if (roomFocus && roomFocus.el) roomFocus.el.classList.remove('is-focus');
+    roomFocus = label;
+    if (label) label.el.classList.add('is-focus');
+    document.getElementById('room-whole').hidden = !label;
+  }
   let roomMix = 0;                      /* 0 = looking at the tower, 1 = looking down into a floor */
   const exploreIndex = ui.shots.indexOf('explore');
   const ease = (t) => t * t * (3 - 2 * t);
@@ -1455,6 +1516,7 @@ function start(canvas) {
     const a = shotList[i], b = shotList[i + 1];
     const out = {};
     for (const k of ['theta', 'elev', 'radius', 'ty', 'side']) out[k] = a[k] + (b[k] - a[k]) * f;
+    out.fx = 0; out.fz = 0;
     const mobile = isMobile();
     if (mobile) { out.side = 0; out.radius *= 1.35; out.ty -= 1.2; }
     /* Inside the availability chapter, a chosen floor flies the camera in and over the top of it */
@@ -1474,12 +1536,22 @@ function start(canvas) {
           elev: 1.27,
           radius: mobile ? 15 : 11.2,
           ty: levelY(ui.selected) + 0.1 - (mobile ? 0.9 : 0),
-          side: mobile ? 0 : -1.2
+          side: mobile ? 0 : -1.2,
+          fx: 0, fz: 0
         };
-        for (const k of ['theta', 'elev', 'radius', 'ty', 'side']) out[k] += (room[k] - out[k]) * weight;
+        /* A clicked room label: swoop down at a lower angle onto that room */
+        if (roomFocus && roomFocus.level === ui.selected) {
+          roomFocus.anchor.getWorldPosition(focusPos);
+          room.fx = focusPos.x; room.fz = focusPos.z;
+          room.radius = mobile ? 6.2 : 4.4;
+          room.elev = 1.02;
+          room.side = mobile ? 0 : -1.1;
+        }
+        for (const k of SHOT_KEYS) out[k] += (room[k] - out[k]) * weight;
       }
     }
     if (ui.selected == null) roomView.level = null;
+    if (roomFocus && roomFocus.level !== ui.selected) setFocus(null);
     return { shot: out, explore: weight > 0.5 };
   }
 
@@ -1504,6 +1576,23 @@ function start(canvas) {
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects(interior.pads, false);
     return hits.length ? hits[0].object.userData.unitId : null;
+  }
+  /* Did a click land on the floor plate, or out in the empty space around it? */
+  const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const hitPoint = new THREE.Vector3();
+  function onPlate(event) {
+    if (!interior) return false;
+    pointer.set((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1);
+    raycaster.setFromCamera(pointer, camera);
+    floorPlane.constant = -interior.root.position.y;
+    if (!raycaster.ray.intersectPlane(floorPlane, hitPoint)) return false;
+    interior.root.worldToLocal(hitPoint);
+    return insidePlate(hitPoint.x, hitPoint.z, -0.6);
+  }
+  /* Step back out: a zoomed room goes back to the whole floor, the whole floor goes back to the tower */
+  function stepOut() {
+    if (roomFocus) setFocus(null);
+    else if (ui.selected != null) ui.select(null);
   }
   function showTip(level, event) {
     if (level == null) { tip.classList.remove('is-on'); return; }
@@ -1534,10 +1623,12 @@ function start(canvas) {
     }
     if (!exploreActive) { showTip(null); return; }
     if (inRoom()) {
-      hoverUnit = pickUnit(event);
+      const plate = onPlate(event);
+      hoverUnit = plate ? pickUnit(event) : null;
       ui.setHover(null);
       showTip(null);
       canvas.classList.toggle('on-floor', hoverUnit != null && hoverUnit !== ui.unit);
+      canvas.classList.toggle('off-plate', !plate);
       return;
     }
     hoverUnit = null;
@@ -1552,6 +1643,7 @@ function start(canvas) {
     canvas.classList.remove('is-dragging');
     if (moved < 6) {
       if (inRoom()) {
+        if (!onPlate(event)) { stepOut(); return; }
         const unitId = pickUnit(event);
         if (unitId && unitId !== ui.unit) ui.select(ui.selected, unitId);
         return;
@@ -1569,7 +1661,7 @@ function start(canvas) {
   const tmp = new THREE.Color();
   let statusMix = 0;
   function paintFloors(dt) {
-    statusMix += ((exploreActive ? 1 : 0) - statusMix) * (1 - Math.exp(-dt * 4));
+    statusMix += ((exploreActive ? 1 : 0) - statusMix) * (1 - Math.exp(-dt * 6));
     for (let i = 0; i < T.count; i += 1) {
       const level = FIRST + i;
       const floor = floors[i];
@@ -1594,12 +1686,15 @@ function start(canvas) {
 
   /* ---- Furnished floor view ---- */
   const labelLayer = document.getElementById('room-labels');
+  const exitBtn = document.getElementById('room-exit');
+  document.getElementById('room-whole').addEventListener('click', () => setFocus(null));
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') stepOut(); });
   const hint = document.getElementById('room-hint');
   const hintText = document.getElementById('room-hint-text');
   const unitById = new Map(floors.flatMap((f) => f.units.map((u) => [u.id, u])));
   const v3 = new THREE.Vector3();
   const TINT = { selected: new THREE.Color(0x3a2810), hover: new THREE.Color(0x1c140a), none: new THREE.Color(0x000000) };
-  let hiddenIndex = -1, clipY = TOP_Y + 2, shownUnit = undefined, shownHover = undefined;
+  let hiddenIndex = -1, clipY = TOP_Y + 2, shownUnit = undefined, shownHover = undefined, shadowDirty = 0;
 
   function setInterior(level) {
     if (interior) {
@@ -1616,26 +1711,39 @@ function start(canvas) {
       const el = document.createElement('div');
       el.className = 'room-label' + (l.kind === 'unit' ? ' unit' : '');
       el.textContent = l.kind === 'unit' ? `${l.text} · ${unitById.get(l.unitId).beds} bed` : l.text;
+      el.setAttribute('role', 'button');
+      el.tabIndex = 0;
+      const act = () => {
+        if (l.kind === 'unit') { setFocus(null); if (l.unitId !== ui.unit) ui.select(ui.selected, l.unitId); return; }
+        setFocus(roomFocus === l ? null : l);      /* click the same label again to zoom back out */
+      };
+      el.addEventListener('click', act);
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
       labelLayer.appendChild(el);
       l.el = el;
+      l.level = level;
     });
     shownUnit = undefined; shownHover = undefined;
+    shadowDirty = 3;
   }
 
   function updateRoom(dt, explore) {
     const want = explore && ui.selected != null ? 1 : 0;
-    roomMix += (want - roomMix) * (1 - Math.exp(-dt * (want ? 2.4 : 3.5)));
+    roomMix += (want - roomMix) * (1 - Math.exp(-dt * (want ? 4.5 : 6)));
     if (reduced) roomMix = want;
 
     /* Build the model for the chosen floor; drop it once we've flown back out */
     const level = ui.selected;
     if (level != null && (!interior || interior.level !== level)) setInterior(level);
     if (level == null && interior && roomMix < 0.02) setInterior(null);
-    if (interior) interior.root.visible = roomMix > 0.01;
+    if (interior) {
+      const vis = roomMix > 0.01;
+      if (vis !== interior.root.visible) { interior.root.visible = vis; shadowDirty = 3; }
+    }
 
     /* Peel the floors away from the top down to just above the chosen floor */
     const cut = level != null && want ? levelY(level) + 0.055 + 0.11 : TOP_Y + 2;
-    clipY += (cut - clipY) * (reduced ? 1 : 1 - Math.exp(-dt * 2.6));
+    clipY += (cut - clipY) * (reduced ? 1 : 1 - Math.exp(-dt * 5));
     clip.constant = clipY;
 
     /* Hide the glowing block that stands in for this floor's interior */
@@ -1653,6 +1761,7 @@ function start(canvas) {
     roomFill.intensity = 0.75 * roomMix;
     roomSun.position.set(1.6, floorY + 12, 4.2);
     roomSun.target.position.set(0, floorY, 0);
+    if (shadowDirty > 0 && interior && interior.root.visible) { renderer.shadowMap.needsUpdate = true; shadowDirty -= 1; }
     if (bloom) bloom.strength = 0.55 - 0.32 * roomMix;
 
     /* Highlight the selected residence on a two-residence floor */
@@ -1668,6 +1777,7 @@ function start(canvas) {
     /* Labels follow the model on screen */
     const labelAlpha = Math.max(0, Math.min(1, (roomMix - 0.7) / 0.25));
     labelLayer.style.opacity = labelAlpha;
+    labelLayer.classList.toggle('is-live', labelAlpha > 0.5);
     if (interior && labelAlpha > 0) {
       const w = window.innerWidth, h = window.innerHeight;
       interior.labels.forEach((l) => {
@@ -1682,7 +1792,7 @@ function start(canvas) {
     if (on && hint.dataset.level !== String(level)) {
       hint.dataset.level = level;
       const two = interior && interior.pads.length > 1;
-      hintText.innerHTML = `<strong>Floor ${level}</strong> · drag to turn${two ? ' · click a residence to switch' : ''}`;
+      hintText.innerHTML = `<strong>Floor ${level}</strong> · click a room name to zoom in${two ? ' · click a residence to switch' : ''} · click outside to exit`;
     }
   }
 
@@ -1700,20 +1810,22 @@ function start(canvas) {
     exploreActive = explore;
     canvas.classList.toggle('can-explore', explore);
     if (!explore) canvas.classList.remove('on-floor');
+    if (!inRoom()) canvas.classList.remove('off-plate');
+    exitBtn.classList.toggle('is-on', roomMix > 0.6 && ui.selected != null);
 
     if (!dragging && Math.abs(dragVel) > 0.001) { dragTheta += dragVel * dt; dragVel *= Math.exp(-dt * 3); }
     if (!reduced && !explore) idle += dt * 0.025;
 
-    const k = reduced ? 1 : 1 - Math.exp(-dt * 3.2);
-    for (const key of ['theta', 'elev', 'radius', 'ty', 'side']) cam[key] += (shot[key] - cam[key]) * k;
+    const k = reduced ? 1 : 1 - Math.exp(-dt * 5.5);
+    for (const key of SHOT_KEYS) cam[key] += (shot[key] - cam[key]) * k;
 
     const theta = cam.theta + idle;
     const cosE = Math.cos(cam.elev);
-    camera.position.set(Math.sin(theta) * cosE * cam.radius, cam.ty + Math.sin(cam.elev) * cam.radius, Math.cos(theta) * cosE * cam.radius);
+    camera.position.set(cam.fx + Math.sin(theta) * cosE * cam.radius, cam.ty + Math.sin(cam.elev) * cam.radius, cam.fz + Math.cos(theta) * cosE * cam.radius);
     camera.position.y = Math.max(camera.position.y, 0.4);
     /* Shift the view sideways so the tower sits beside the copy, not under it */
     right.set(Math.cos(theta), 0, -Math.sin(theta));
-    lookAt.set(0, cam.ty, 0).addScaledVector(right, cam.side * cam.radius * 0.16);
+    lookAt.set(cam.fx, cam.ty, cam.fz).addScaledVector(right, cam.side * cam.radius * 0.16);
     camera.position.addScaledVector(right, cam.side * cam.radius * 0.16);
     camera.lookAt(lookAt);
 
@@ -1726,6 +1838,18 @@ function start(canvas) {
   ui.listeners.push(() => { if (lastEvent && pointerIn && exploreActive) showTip(ui.hover, lastEvent); });
   requestAnimationFrame(frame);
   window.__calderReady = true;
+
+  /* Compile the interior's shaders while the visitor is still reading the hero, so the first dive doesn't stutter */
+  setTimeout(() => {
+    try {
+      const warm = buildInterior(floors.find((f) => !f.full));
+      scene.add(warm.root);
+      renderer.compile(scene, camera);
+      scene.remove(warm.root);
+      warm.owned.forEach((g) => g.dispose());
+      warm.pads.forEach((m) => m.material.dispose());
+    } catch (e) { /* not worth failing over */ }
+  }, 1200);
 }
 
 const canvas = document.getElementById('scene');
