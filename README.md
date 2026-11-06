@@ -13,3 +13,8 @@ python3 tools/build.py
 `src/fx/` holds the website-fx-presets renderers (ASCII and liquid orb), unchanged.
 
 The building, residences and prices are invented. The tour form does not send anything.
+
+
+## Photos
+
+Room photos are free-licensed images from [Unsplash](https://unsplash.com/license), loaded from Unsplash's image CDN and credited to each photographer in the room view. Calder Quay is fictional, so they're labelled as representative interiors.

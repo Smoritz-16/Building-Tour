@@ -174,6 +174,37 @@ main { position: relative; z-index: 2; pointer-events: none; }
 .room-exit:hover { border-color: var(--brass); }
 .room-exit svg { width: 16px; height: 16px; }
 
+/* Room photo view: replaces the availability panel while a room is zoomed */
+.explore .panel { position: sticky; }
+.room-view { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; padding: 22px 22px 20px; overflow-y: auto;
+  background: #0c0d0d; border-radius: inherit; opacity: 0; transform: translateX(-14px); pointer-events: none; transition: opacity .3s, transform .3s; }
+.room-view.is-on { opacity: 1; transform: none; pointer-events: auto; }
+.room-view-back { align-self: flex-start; margin-bottom: 14px; padding: 0; border: 0; background: none; color: var(--muted); font: 500 13px/1 var(--sans); cursor: pointer; }
+.room-view-back:hover { color: var(--ink); }
+.rv-photo { position: relative; aspect-ratio: 4 / 3; border-radius: 3px; overflow: hidden; background: #1a1b1c; flex: none; }
+.rv-open { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.rv-photo img { display: block; width: 100%; height: 100%; object-fit: cover; transition: opacity .3s; }
+.rv-photo img.is-loading { opacity: .35; }
+.rv-count { position: absolute; left: 10px; bottom: 10px; padding: 3px 8px; border-radius: 999px; background: rgba(9,10,10,.7); font-size: 11px; color: var(--ink); }
+.rv-nav { position: absolute; top: 50%; width: 34px; height: 34px; margin-top: -17px; border: 1px solid rgba(236,231,220,.25); border-radius: 50%;
+  background: rgba(9,10,10,.6); color: var(--ink); font-size: 20px; line-height: 1; cursor: pointer; transition: border-color .2s, background .2s; }
+.rv-nav:hover { border-color: var(--brass); background: rgba(9,10,10,.85); }
+.rv-nav.prev { left: 10px; } .rv-nav.next { right: 10px; }
+.room-view .eyebrow { margin-top: 18px; }
+.rv-title { margin: 6px 0 0; font: 400 32px/1.05 var(--serif); color: var(--ink); }
+.rv-copy { margin-top: 10px; color: #cfc9bd; font-size: 14px; }
+.rv-thumbs { display: flex; gap: 8px; margin-top: 16px; }
+.rv-thumbs button { flex: 1; aspect-ratio: 4 / 3; padding: 0; border: 1px solid transparent; border-radius: 2px; overflow: hidden; background: #1a1b1c; cursor: pointer; opacity: .55; transition: opacity .2s, border-color .2s; }
+.rv-thumbs button[aria-current="true"], .rv-thumbs button:hover { opacity: 1; border-color: var(--brass); }
+.rv-thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rv-credit { margin-top: auto; padding-top: 16px; font-size: 11px; color: var(--muted); }
+.rv-credit a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+.lightbox { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 4vh 4vw; background: rgba(5,5,6,.92); cursor: zoom-out; }
+.lightbox[hidden] { display: none; }
+.lightbox img { max-width: 100%; max-height: 88vh; border-radius: 3px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+.lightbox-close { position: absolute; top: 18px; right: 22px; width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 50%; background: rgba(9,10,10,.7); color: var(--ink); font-size: 24px; cursor: pointer; }
+.lightbox-credit { position: absolute; bottom: 16px; left: 0; right: 0; text-align: center; font-size: 12px; color: var(--muted); }
+
 /* Enquire */
 .enquire .panel { width: min(520px, 100%); }
 .concierge { display: grid; grid-template-columns: 96px 1fr; gap: 18px; align-items: center; margin: 22px 0 6px; }
@@ -338,6 +369,21 @@ footer { position: relative; z-index: 2; background: #0a0600; border-top: 1px so
 
       <div class="list-head" aria-hidden="true"><span>Floor</span><span>Residence</span><span>Rent</span></div>
       <div class="list" id="list" role="list"></div>
+
+      <section class="room-view" id="room-view" aria-hidden="true" aria-live="polite">
+        <button class="room-view-back" id="room-view-back" type="button">&larr; Whole floor</button>
+        <div class="rv-photo">
+          <button class="rv-open" id="rv-open" type="button" aria-label="Open photo full screen"><img id="rv-img" alt=""></button>
+          <span class="rv-count" id="rv-count">1 / 3</span>
+          <button class="rv-nav prev" id="rv-prev" type="button" aria-label="Previous photo">&#8249;</button>
+          <button class="rv-nav next" id="rv-next" type="button" aria-label="Next photo">&#8250;</button>
+        </div>
+        <p class="eyebrow" id="rv-eyebrow">Residence 22A</p>
+        <h3 class="rv-title" id="rv-title">Kitchen</h3>
+        <p class="rv-copy" id="rv-copy"></p>
+        <div class="rv-thumbs" id="rv-thumbs"></div>
+        <p class="rv-credit">Representative interior. <a id="rv-credit" target="_blank" rel="noopener"></a></p>
+      </section>
     </div>
   </section>
 
@@ -378,6 +424,11 @@ footer { position: relative; z-index: 2; background: #0a0600; border-top: 1px so
 
 <div class="floor-tip" id="floor-tip" aria-hidden="true"></div>
 <div class="room-labels" id="room-labels" aria-hidden="true"></div>
+<div class="lightbox" id="lightbox" hidden role="dialog" aria-label="Room photo">
+  <img id="lightbox-img" alt="">
+  <button class="lightbox-close" id="lightbox-close" type="button" aria-label="Close photo">&times;</button>
+  <p class="lightbox-credit" id="lightbox-credit"></p>
+</div>
 <div class="room-hint" id="room-hint" aria-live="polite">
   <span id="room-hint-text"><strong>Floor 22</strong> · drag to turn · click a residence to switch</span>
   <button class="btn ghost" type="button" id="room-whole" hidden>Whole floor</button>
@@ -1338,7 +1389,9 @@ function buildInterior(floor) {
   root.rotation.y = levelAngle(floor.level);
   root.scale.set(M_XZ, M_Y, M_XZ);
   const labels = [], pads = [], owned = [];
+  let currentUnit = floor.full ? floor.units[0].id : null;
   const addLabel = (parent, text, x, z, kind = 'room', unitId = null) => {
+    if (unitId == null) unitId = currentUnit;
     const anchor = new THREE.Object3D();
     anchor.position.set(x, WALL_H + 0.2, z);
     parent.add(anchor);
@@ -1364,7 +1417,9 @@ function buildInterior(floor) {
       half.add(base);
       pads.push(base);
       const furn = new THREE.Group(); furn.position.y = 0.04; half.add(furn);
+      currentUnit = unit.id;
       halfResidence(furn, unit.beds, (t, x, z) => addLabel(furn, t, x, z));
+      currentUnit = null;
       addLabel(furn, unit.id, 6.6, -1.9, 'unit', unit.id);
     });
     wall(furnAll, 0, -7.85, 0, -3.0);
@@ -1413,6 +1468,60 @@ function mergeInterior(root, pads, owned) {
   });
   pads.forEach((p) => { p.receiveShadow = true; });
 }
+
+/* ---------- Real photos for each kind of room ----------
+   Free-licensed photos from Unsplash (unsplash.com/license), loaded straight from Unsplash's image CDN.
+   Calder Quay is invented, so these are shown as representative interiors, each credited to its photographer. */
+const ROOM_PHOTOS = {
+  kitchen: [
+    ['1682888813913-e13f18692019', 'o-uPDNNSsDA', 'Zac Gudakov'],
+    ['1638886043487-72d203fa66b6', 'szG9kzMLcPE', 'Lotus Design N Print'],
+    ['1602028915047-37269d1a73f7', 'RwXneIyqxAw', 'Lotus Design N Print']
+  ],
+  living: [
+    ['1600494448850-6013c64ba722', 'NTaF5rBmlyE', 'Collov Home Design'],
+    ['1688646953306-5ec93eab8c06', 'bYqaOabPmTk', 'amir hossein'],
+    ['1757924461488-ef9ad0670978', 'LqGf5UvHCZ8', 'Aalo Lens']
+  ],
+  dining: [
+    ['1618221469555-7f3ad97540d6', '4xRP0Ajk9ys', 'Spacejoy'],
+    ['1611095210561-67f0832b1ca3', '-Vfa35ueUCo', 'Lotus Design N Print']
+  ],
+  bedroom: [
+    ['1604580040660-f0a7f9abaea6', 'f9O-1eKGlQM', 'Amira Aboalnaga'],
+    ['1644057501622-dfa7dd26dbfb', 'vz9IbCAXHKQ', 'Ali Moradi'],
+    ['1757344454333-cc666252e596', 'u-RIsXlI8Q8', 'Poojan Thanekar'],
+    ['1696762932825-2737db830bbe', 'ErDrzSvSNv4', 'Le Quan']
+  ],
+  bath: [
+    ['1564540579594-0930edb6de43', 'yb9b2wbhxG4', 'Christian Mackie'],
+    ['1760067537877-dd4d2722c649', 'k8bh3LZpsyI', 'Alef Morais'],
+    ['1776525433347-13ffc965601a', 'q-LqibnwN8Y', 'Poojan Thanekar'],
+    ['1564540583246-934409427776', '6BJu73-UJpg', 'Christian Mackie']
+  ],
+  study: [
+    ['1622127922040-13cab637ee78', 'PhOABIwQrRE', 'TheStandingDesk']
+  ]
+};
+const ROOM_COPY = {
+  kitchen: 'Stone counters, a walnut island with seating for three, integrated appliances and a gas hob.',
+  living: 'Floor-to-ceiling glass on two sides, oak floors and room for a full sofa and lounge chairs.',
+  dining: 'Seats six beside the glass, a few steps from the kitchen island.',
+  bedroom: 'Quiet side of the plate, with a fitted wardrobe and blackout blinds behind the glass.',
+  bath: 'Stone throughout, a walk-in shower or deep soaking tub, heated floors and a fitted vanity.',
+  study: 'A desk nook tucked off the living space, wired for work.'
+};
+function roomType(text) {
+  const t = text.toLowerCase();
+  if (/bath|powder/.test(t)) return 'bath';
+  if (/kitchen/.test(t)) return 'kitchen';
+  if (/bed|primary|suite/.test(t)) return 'bedroom';
+  if (/dining/.test(t)) return 'dining';
+  if (/living|reading|family/.test(t)) return 'living';
+  if (/study/.test(t)) return 'study';
+  return null;
+}
+const photoUrl = (id, w) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=80`;
 
 function start(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -1504,7 +1613,71 @@ function start(canvas) {
     roomFocus = label;
     if (label) label.el.classList.add('is-focus');
     document.getElementById('room-whole').hidden = !label;
+    showRoomPhotos(label);
   }
+
+  /* The left panel turns into a photo view of the zoomed room */
+  const roomPanel = document.getElementById('room-view');
+  const rv = {
+    img: document.getElementById('rv-img'), count: document.getElementById('rv-count'),
+    eyebrow: document.getElementById('rv-eyebrow'), title: document.getElementById('rv-title'),
+    copy: document.getElementById('rv-copy'), thumbs: document.getElementById('rv-thumbs'), credit: document.getElementById('rv-credit'),
+    list: [], index: 0
+  };
+  const lightbox = document.getElementById('lightbox');
+  const lightboxImg = document.getElementById('lightbox-img');
+  function paintPhoto() {
+    const [id, slug, who] = rv.list[rv.index];
+    rv.img.classList.add('is-loading');
+    rv.img.onload = rv.img.onerror = () => rv.img.classList.remove('is-loading');
+    rv.img.src = photoUrl(id, 1100);
+    rv.img.alt = `${rv.title.textContent}, representative interior`;
+    rv.count.textContent = `${rv.index + 1} / ${rv.list.length}`;
+    rv.count.hidden = rv.list.length < 2;
+    document.getElementById('rv-prev').hidden = document.getElementById('rv-next').hidden = rv.list.length < 2;
+    rv.credit.textContent = `Photo: ${who} / Unsplash`;
+    rv.credit.href = `https://unsplash.com/photos/${slug}`;
+    [...rv.thumbs.children].forEach((b, i) => b.setAttribute('aria-current', String(i === rv.index)));
+  }
+  function showRoomPhotos(label) {
+    const type = label && label.kind === 'room' ? roomType(label.text) : null;
+    if (!type) { roomPanel.classList.remove('is-on'); roomPanel.setAttribute('aria-hidden', 'true'); return; }
+    const all = ROOM_PHOTOS[type];
+    /* Each room starts on its own photo, so the two bedrooms on a floor don't look identical */
+    let h = 0;
+    for (const ch of `${label.level}${label.unitId}${label.text}`) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const start = h % all.length;
+    rv.list = all.map((_, i) => all[(start + i) % all.length]);
+    rv.index = 0;
+    rv.title.textContent = label.text;
+    rv.eyebrow.textContent = label.unitId ? `Residence ${label.unitId} · Floor ${label.level}` : `Floor ${label.level}`;
+    rv.copy.textContent = ROOM_COPY[type];
+    rv.thumbs.innerHTML = '';
+    if (rv.list.length > 1) rv.list.forEach(([id], i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('aria-label', `Photo ${i + 1}`);
+      b.innerHTML = `<img src="${photoUrl(id, 240)}" alt="" loading="lazy">`;
+      b.addEventListener('click', () => { rv.index = i; paintPhoto(); });
+      rv.thumbs.appendChild(b);
+    });
+    paintPhoto();
+    roomPanel.classList.add('is-on');
+    roomPanel.setAttribute('aria-hidden', 'false');
+  }
+  const step = (d) => { if (rv.list.length > 1) { rv.index = (rv.index + d + rv.list.length) % rv.list.length; paintPhoto(); } };
+  document.getElementById('rv-prev').addEventListener('click', () => step(-1));
+  document.getElementById('rv-next').addEventListener('click', () => step(1));
+  document.getElementById('room-view-back').addEventListener('click', () => setFocus(null));
+  document.getElementById('rv-open').addEventListener('click', () => {
+    const [id, , who] = rv.list[rv.index];
+    lightboxImg.src = photoUrl(id, 2400);
+    lightboxImg.alt = rv.img.alt;
+    document.getElementById('lightbox-credit').textContent = `${rv.title.textContent} · representative interior · Photo: ${who} / Unsplash`;
+    lightbox.hidden = false;
+  });
+  const closeLightbox = () => { lightbox.hidden = true; lightboxImg.removeAttribute('src'); };
+  lightbox.addEventListener('click', closeLightbox);
   let roomMix = 0;                      /* 0 = looking at the tower, 1 = looking down into a floor */
   const exploreIndex = ui.shots.indexOf('explore');
   const ease = (t) => t * t * (3 - 2 * t);
@@ -1688,7 +1861,10 @@ function start(canvas) {
   const labelLayer = document.getElementById('room-labels');
   const exitBtn = document.getElementById('room-exit');
   document.getElementById('room-whole').addEventListener('click', () => setFocus(null));
-  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') stepOut(); });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { if (!lightbox.hidden) closeLightbox(); else stepOut(); }
+    if (roomPanel.classList.contains('is-on') && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) step(event.key === 'ArrowRight' ? 1 : -1);
+  });
   const hint = document.getElementById('room-hint');
   const hintText = document.getElementById('room-hint-text');
   const unitById = new Map(floors.flatMap((f) => f.units.map((u) => [u.id, u])));
