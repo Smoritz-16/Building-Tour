@@ -149,6 +149,19 @@ main { position: relative; z-index: 2; pointer-events: none; }
 .floor-tip.is-on { opacity: 1; }
 .floor-tip strong { font: 500 18px/1 var(--serif); margin-right: 8px; }
 
+/* Furnished floor view: room labels projected from the 3D model */
+.room-labels { position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0; }
+.room-label { position: absolute; left: 0; top: 0; padding: 3px 8px; border: 1px solid rgba(236,231,220,.16); border-radius: 999px; background: rgba(9,10,10,.64);
+  font-size: 10px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: var(--ink); white-space: nowrap; will-change: transform; }
+.room-label.unit { padding: 6px 12px; border-color: transparent; background: var(--brass); color: #16110a; font: 500 16px/1 var(--serif); letter-spacing: .02em; text-transform: none; }
+.room-label.unit.dim { background: rgba(9,10,10,.74); color: var(--ink); border-color: var(--line); }
+.room-hint { position: fixed; right: clamp(20px, 4vw, 56px); bottom: 26px; z-index: 15; display: flex; align-items: center; gap: 14px; padding: 8px 8px 8px 16px;
+  border: 1px solid var(--line); border-radius: 999px; background: rgba(9,10,10,.72); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  font-size: 12px; color: var(--muted); opacity: 0; transform: translateY(8px); transition: opacity .35s, transform .35s; pointer-events: none; }
+.room-hint.is-on { opacity: 1; transform: none; pointer-events: auto; }
+.room-hint strong { color: var(--ink); font-weight: 600; }
+.room-hint .btn { padding: 9px 14px; }
+
 /* Enquire */
 .enquire .panel { width: min(520px, 100%); }
 .concierge { display: grid; grid-template-columns: 96px 1fr; gap: 18px; align-items: center; margin: 22px 0 6px; }
@@ -187,6 +200,9 @@ footer { position: relative; z-index: 2; background: #0a0600; border-top: 1px so
   .explore { min-height: auto; }
   .explore .panel { position: relative; top: 0; max-height: none; }
   .list { max-height: 50vh; }
+  .room-hint { left: 16px; right: 16px; top: 76px; bottom: auto; justify-content: space-between; }
+  .room-label { font-size: 9px; padding: 2px 6px; }
+  .room-label.unit { font-size: 13px; padding: 5px 9px; }
   form { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -276,7 +292,7 @@ footer { position: relative; z-index: 2; background: #0a0600; border-top: 1px so
     <div class="panel" id="explore-panel">
       <p class="eyebrow">Availability</p>
       <h2 class="disp">Pick a floor</h2>
-      <p class="explore-hint">Select a floor on the tower or in the list. Drag the tower to turn it.</p>
+      <p class="explore-hint">Select a floor on the tower or in the list to fly inside and see it furnished. Drag to turn the view.</p>
       <div class="filters" role="group" aria-label="Bedrooms">
         <button class="chip" type="button" data-beds="all" aria-pressed="true">All</button>
         <button class="chip" type="button" data-beds="1" aria-pressed="false">1 bed</button>
@@ -294,7 +310,7 @@ footer { position: relative; z-index: 2; background: #0a0600; border-top: 1px so
       <div class="detail" id="detail" hidden aria-live="polite">
         <div class="detail-head">
           <h3 id="detail-title">Floor 22</h3>
-          <button type="button" id="detail-close">Clear</button>
+          <button type="button" id="detail-close">Back to tower</button>
         </div>
         <div class="detail-body">
           <svg class="plan" id="plan" viewBox="-70 -70 140 140" role="img" aria-label="Floor plate"></svg>
@@ -347,6 +363,11 @@ footer { position: relative; z-index: 2; background: #0a0600; border-top: 1px so
 </footer>
 
 <div class="floor-tip" id="floor-tip" aria-hidden="true"></div>
+<div class="room-labels" id="room-labels" aria-hidden="true"></div>
+<div class="room-hint" id="room-hint" aria-live="polite">
+  <span id="room-hint-text"><strong>Floor 22</strong> · drag to turn · click a residence to switch</span>
+  <button class="btn ghost" type="button" id="room-back">Back to tower</button>
+</div>
 
 <script>
 /* ---------- Residences: invented, generated with a fixed seed so every visit matches ---------- */
@@ -462,11 +483,12 @@ window.CALDER = (function () {
   }
 
   function renderDetail() {
-    if (ui.selected == null) { detail.hidden = true; return; }
+    if (ui.selected == null) { detail.hidden = true; ui.unit = null; return; }
     const floor = floors.find((f) => f.level === ui.selected);
     if (!selectedUnit || selectedUnit.level !== floor.level) {
       selectedUnit = floor.units.find((u) => u.status === 'available') || floor.units[0];
     }
+    ui.unit = selectedUnit.id;
     detail.hidden = false;
     document.getElementById('detail-title').textContent = 'Floor ' + floor.level;
     unitsEl.innerHTML = floor.units.map((unit) => `
@@ -515,6 +537,10 @@ window.CALDER = (function () {
     if (btn) ui.select(ui.selected, btn.dataset.unit);
   });
   document.getElementById('detail-close').addEventListener('click', () => ui.select(null));
+  document.getElementById('room-back').addEventListener('click', () => ui.select(null));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && ui.selected != null) ui.select(null);
+  });
   document.getElementById('tour-btn').addEventListener('click', () => {
     if (selectedUnit) select.value = selectedUnit.id;
     document.getElementById('enquire').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
@@ -863,11 +889,489 @@ function buildTower(scene, envMap) {
   return { tower, rooms, glass, baseColours, selectRing, hoverRing, count };
 }
 
+/* ---------- Furnished floor: a cutaway model of the chosen floor ----------
+   Laid out in metres on a 22 x 16 m plate (the tower plate's proportions), then scaled into the tower.
+   The heights are squashed a little so tall pieces stay under the cut line. */
+const IN = { hx: 10.8, hz: 7.85, r: 4.85 };          /* inside face of the glass, metres */
+const M_XZ = TOWER_W / 22, M_Y = 0.13;
+const WALL_H = 1.3, WALL_T = 0.12;
+let MAT = null, GEO = null;
+
+function insidePlate(x, z, inset = 0) {
+  const hx = IN.hx - inset, hz = IN.hz - inset, r = IN.r - inset;
+  const ax = Math.abs(x), az = Math.abs(z);
+  if (ax > hx || az > hz) return false;
+  const qx = ax - (hx - r), qz = az - (hz - r);
+  return qx <= 0 || qz <= 0 || qx * qx + qz * qz <= r * r;
+}
+
+function interiorKit() {
+  if (MAT) return;
+  const std = (color, roughness = 0.7, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
+  MAT = {
+    oak: std(0xb88d60, 0.6), oakDark: std(0x7b5a3e, 0.55), walnut: std(0x553a28, 0.5),
+    tile: std(0xd9d6cf, 0.32), stone: std(0xe6e1d7, 0.28), floorStone: std(0xc9c3b8, 0.4),
+    wall: std(0xf1ede5, 0.85), wallCap: std(0x2c2926, 0.9),
+    cabinet: std(0x2c2d2f, 0.45), white: std(0xf3f1ec, 0.22), steel: std(0xb9bcbf, 0.28, { metalness: 0.85 }),
+    black: std(0x161617, 0.4), brass: std(0xc8a46b, 0.3, { metalness: 0.9 }),
+    sofa: std(0x9b958b, 0.95), sofaSeat: std(0xaba59a, 0.95), sage: std(0x6c7a6e, 0.95), clay: std(0xa86f4f, 0.9),
+    linen: std(0xe4dfd4, 0.92), pillow: std(0xf2efe9, 0.9), throwA: std(0x9b7656, 0.9), throwB: std(0x5d6c7c, 0.9),
+    rug: std(0xd2c6b1, 1), rug2: std(0x6f5e4f, 1), leaf: std(0x4b6a3b, 0.85), leaf2: std(0x5f7d45, 0.85), pot: std(0xd8cfc0, 0.8),
+    water: std(0x9fd0d8, 0.05, { metalness: 0.15 }),
+    pane: new THREE.MeshStandardMaterial({ color: 0xd5e7ec, roughness: 0.05, transparent: true, opacity: 0.3, depthWrite: false }),
+    core: std(0x232427, 0.85), lift: std(0x7a7d82, 0.35, { metalness: 0.6 }), stair: std(0x3b3c40, 0.8),
+    glow: new THREE.MeshBasicMaterial({ color: 0xffd9a3 })
+  };
+  GEO = {
+    box: new THREE.BoxGeometry(1, 1, 1),
+    cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 24),
+    ico: new THREE.IcosahedronGeometry(0.5, 1)
+  };
+}
+
+/* Primitive helpers: y is the bottom of the piece, sizes in metres */
+function bx(p, mat, x, y, z, w, h, d, ry = 0) {
+  const m = new THREE.Mesh(GEO.box, mat);
+  m.position.set(x, y + h / 2, z); m.scale.set(w, h, d); m.rotation.y = ry;
+  p.add(m); return m;
+}
+function cy(p, mat, x, y, z, dx, h, dz = dx) {
+  const m = new THREE.Mesh(GEO.cyl, mat);
+  m.position.set(x, y + h / 2, z); m.scale.set(dx, h, dz);
+  p.add(m); return m;
+}
+function blob(p, mat, x, y, z, sx, sy, sz) {
+  const m = new THREE.Mesh(GEO.ico, mat);
+  m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.rotation.y = x * 3.1 + z;
+  p.add(m); return m;
+}
+/* A piece of furniture: local -z is its back (headboard, sofa back, counter back), +z its front. */
+function piece(p, x, z, ry = 0) {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z); g.rotation.y = ry;
+  p.add(g); return g;
+}
+
+function bed(p, x, z, ry, w, throwMat) {
+  const g = piece(p, x, z, ry), L = 2.1;
+  bx(g, MAT.walnut, 0, 0, 0, w + 0.12, 0.3, L);
+  bx(g, MAT.walnut, 0, 0, -L / 2 - 0.05, w + 0.3, 1.05, 0.1);
+  bx(g, MAT.white, 0, 0.3, 0, w, 0.2, L - 0.06);
+  bx(g, MAT.linen, 0, 0.5, 0.22, w + 0.04, 0.07, L - 0.5);
+  bx(g, throwMat, 0, 0.57, 0.62, w + 0.08, 0.04, 0.55);
+  for (const s of [-1, 1]) {
+    bx(g, MAT.pillow, s * w / 4, 0.5, -L / 2 + 0.3, w / 2 - 0.14, 0.14, 0.42);
+    bx(g, MAT.walnut, s * (w / 2 + 0.38), 0, -L / 2 + 0.25, 0.5, 0.5, 0.42);
+    cy(g, MAT.brass, s * (w / 2 + 0.38), 0.5, -L / 2 + 0.25, 0.12, 0.2);
+    cy(g, MAT.glow, s * (w / 2 + 0.38), 0.7, -L / 2 + 0.25, 0.3, 0.2);
+  }
+}
+function wardrobe(p, x, z, ry, len) {
+  const g = piece(p, x, z, ry);
+  bx(g, MAT.oakDark, 0, 0, 0, len, 1.6, 0.6);
+  const doors = Math.max(2, Math.round(len / 0.55));
+  for (let i = 1; i < doors; i += 1) bx(g, MAT.walnut, -len / 2 + (i * len) / doors, 1.6, 0, 0.02, 0.01, 0.6);
+}
+function sofa(p, x, z, ry, len, mat = MAT.sofa) {
+  const g = piece(p, x, z, ry), d = 0.95;
+  bx(g, mat, 0, 0, 0, len, 0.4, d);
+  bx(g, mat, 0, 0, -d / 2 + 0.12, len, 0.82, 0.24);
+  for (const s of [-1, 1]) bx(g, mat, s * (len / 2 - 0.1), 0, 0, 0.2, 0.62, d);
+  const inner = len - 0.4, seats = Math.max(2, Math.round(inner / 0.8)), sw = inner / seats;
+  for (let i = 0; i < seats; i += 1) bx(g, MAT.sofaSeat, -inner / 2 + sw * (i + 0.5), 0.4, 0.1, sw - 0.04, 0.12, d - 0.3);
+  bx(g, MAT.clay, -inner / 2 + 0.3, 0.52, -0.2, 0.42, 0.3, 0.14, 0.25);
+  bx(g, MAT.sage, inner / 2 - 0.3, 0.52, -0.2, 0.42, 0.3, 0.14, -0.25);
+}
+function armchair(p, x, z, ry, mat = MAT.sage) {
+  const g = piece(p, x, z, ry);
+  bx(g, mat, 0, 0, 0, 0.85, 0.4, 0.85);
+  bx(g, mat, 0, 0, -0.33, 0.85, 0.78, 0.2);
+  for (const s of [-1, 1]) bx(g, mat, s * 0.34, 0, 0.04, 0.17, 0.58, 0.77);
+  bx(g, MAT.sofaSeat, 0, 0.4, 0.08, 0.5, 0.1, 0.55);
+}
+function coffeeTable(p, x, z, w, d) {
+  const g = piece(p, x, z);
+  bx(g, MAT.walnut, 0, 0, 0, w - 0.1, 0.36, d - 0.1);
+  bx(g, MAT.stone, 0, 0.36, 0, w, 0.04, d);
+  bx(g, MAT.throwB, -w * 0.2, 0.4, 0, 0.32, 0.05, 0.24, 0.3);
+  cy(g, MAT.pot, w * 0.22, 0.4, 0.02, 0.14, 0.24);
+  blob(g, MAT.leaf2, w * 0.22, 0.72, 0.02, 0.22, 0.2, 0.22);
+}
+function rug(p, x, z, w, d, mat) { bx(p, mat, x, 0, z, w, 0.015, d); }
+function chair(p, x, z, ry) {
+  const g = piece(p, x, z, ry);
+  bx(g, MAT.oakDark, 0, 0, 0, 0.46, 0.46, 0.46);
+  bx(g, MAT.walnut, 0, 0.46, -0.21, 0.46, 0.4, 0.05);
+}
+function dining(p, x, z, ry, seats) {
+  const g = piece(p, x, z, ry), L = seats >= 8 ? 2.5 : seats >= 6 ? 1.95 : 1.4, n = seats / 2;
+  bx(g, MAT.walnut, 0, 0, 0, L * 0.6, 0.72, 0.32);
+  bx(g, MAT.oak, 0, 0.72, 0, L, 0.05, 0.98);
+  for (let i = 0; i < n; i += 1) {
+    const cx = -L / 2 + (i + 0.5) * (L / n);
+    chair(g, cx, -0.74, 0); chair(g, cx, 0.74, Math.PI);
+  }
+  cy(g, MAT.pot, 0, 0.77, 0, 0.16, 0.22);
+  blob(g, MAT.leaf, 0, 1.05, 0, 0.3, 0.22, 0.3);
+}
+function kitchenRun(p, x, z, ry, len, sinkAt, hobAt) {
+  const g = piece(p, x, z, ry);
+  bx(g, MAT.cabinet, 0, 0, 0, len, 0.88, 0.62);
+  bx(g, MAT.stone, 0, 0.88, 0.01, len + 0.02, 0.04, 0.65);
+  bx(g, MAT.steel, sinkAt, 0.9, 0.04, 0.66, 0.03, 0.44);
+  cy(g, MAT.steel, sinkAt, 0.92, -0.24, 0.06, 0.3);
+  bx(g, MAT.black, hobAt, 0.92, 0.03, 0.66, 0.012, 0.52);
+  for (const [dx, dz] of [[-0.17, -0.12], [0.17, -0.12], [-0.17, 0.14], [0.17, 0.14]]) cy(g, MAT.lift, hobAt + dx, 0.93, 0.03 + dz, 0.18, 0.006);
+}
+function fridge(p, x, z, ry) {
+  const g = piece(p, x, z, ry);
+  bx(g, MAT.steel, 0, 0, 0, 0.9, 1.6, 0.68);
+  bx(g, MAT.black, 0, 1.6, 0, 0.015, 0.005, 0.68);
+}
+function island(p, x, z, ry, len) {
+  const g = piece(p, x, z, ry);
+  bx(g, MAT.walnut, 0, 0, -0.08, len, 0.88, 0.8);
+  bx(g, MAT.stone, 0, 0.88, 0, len + 0.08, 0.05, 1.05);
+  const n = Math.max(2, Math.floor(len / 0.68));
+  for (let i = 0; i < n; i += 1) {
+    const sx = -len / 2 + (i + 0.5) * (len / n);
+    cy(g, MAT.black, sx, 0, 0.78, 0.05, 0.62);
+    cy(g, MAT.clay, sx, 0.62, 0.78, 0.4, 0.07);
+  }
+  cy(g, MAT.pot, len * 0.3, 0.93, -0.1, 0.22, 0.12);
+  blob(g, MAT.throwA, len * 0.3, 1.08, -0.1, 0.12, 0.08, 0.12);
+}
+function vanity(p, x, z, ry, len, basins = 1) {
+  const g = piece(p, x, z, ry);
+  bx(g, MAT.walnut, 0, 0.2, 0, len, 0.62, 0.5);
+  bx(g, MAT.white, 0, 0.82, 0, len, 0.04, 0.52);
+  for (let i = 0; i < basins; i += 1) {
+    const bxp = basins === 1 ? 0 : (i === 0 ? -len / 4 : len / 4);
+    cy(g, MAT.tile, bxp, 0.86, 0.02, 0.44, 0.012, 0.32);
+    cy(g, MAT.steel, bxp, 0.86, -0.2, 0.05, 0.22);
+  }
+  bx(g, MAT.pane, 0, 0.95, -0.24, len * 0.9, 0.6, 0.02);
+}
+function toilet(p, x, z, ry) {
+  const g = piece(p, x, z, ry);
+  bx(g, MAT.white, 0, 0, -0.27, 0.48, 0.8, 0.2);
+  cy(g, MAT.white, 0, 0, 0.02, 0.4, 0.42, 0.54);
+  cy(g, MAT.tile, 0, 0.42, 0.05, 0.3, 0.01, 0.4);
+}
+function shower(p, x, z, ry, w, d) {
+  const g = piece(p, x, z, ry);
+  bx(g, MAT.floorStone, 0, 0, 0, w, 0.04, d);
+  cy(g, MAT.steel, 0, 0.04, 0, 0.12, 0.005);
+  cy(g, MAT.steel, 0, 1.4, -d / 2 + 0.2, 0.26, 0.02);
+  bx(g, MAT.pane, 0, 0, d / 2 - 0.02, w, 1.55, 0.03);
+}
+function tub(p, x, z, ry) {
+  const g = piece(p, x, z, ry);
+  bx(g, MAT.white, 0, 0, 0, 1.75, 0.56, 0.82);
+  bx(g, MAT.water, 0, 0.5, 0, 1.52, 0.04, 0.6);
+  cy(g, MAT.steel, -0.78, 0.56, 0, 0.06, 0.12);
+}
+function desk(p, x, z, ry) {
+  const g = piece(p, x, z, ry);
+  for (const [dx, dz] of [[-0.6, -0.26], [0.6, -0.26], [-0.6, 0.26], [0.6, 0.26]]) bx(g, MAT.black, dx, 0, dz, 0.04, 0.72, 0.04);
+  bx(g, MAT.oak, 0, 0.72, 0, 1.3, 0.04, 0.62);
+  bx(g, MAT.lift, 0.05, 0.76, 0.02, 0.34, 0.015, 0.24);
+  cy(g, MAT.glow, -0.45, 0.76, -0.15, 0.22, 0.24);
+  cy(g, MAT.black, 0, 0, 0.62, 0.55, 0.06);
+  cy(g, MAT.black, 0, 0.06, 0.62, 0.06, 0.36);
+  cy(g, MAT.throwB, 0, 0.42, 0.62, 0.5, 0.08);
+  bx(g, MAT.throwB, 0, 0.42, 0.86, 0.46, 0.5, 0.06);
+}
+function plant(p, x, z, s = 1) {
+  const g = piece(p, x, z);
+  cy(g, MAT.pot, 0, 0, 0, 0.42 * s, 0.45 * s);
+  blob(g, MAT.leaf, 0, 0.45 * s + 0.3 * s, 0, 0.78 * s, 0.7 * s, 0.78 * s);
+  blob(g, MAT.leaf2, 0.14 * s, 0.45 * s + 0.55 * s, -0.08 * s, 0.5 * s, 0.5 * s, 0.5 * s);
+}
+function floorLamp(p, x, z) {
+  const g = piece(p, x, z);
+  cy(g, MAT.black, 0, 0, 0, 0.32, 0.03);
+  cy(g, MAT.brass, 0, 0, 0, 0.03, 1.45);
+  cy(g, MAT.glow, 0, 1.3, 0, 0.42, 0.24);
+}
+function tvUnit(p, x, z, ry, len) {
+  const g = piece(p, x, z, ry);
+  bx(g, MAT.walnut, 0, 0.12, 0, len, 0.42, 0.42);
+  bx(g, MAT.black, 0, 0.54, -0.12, len * 0.72, 0.8, 0.05);
+}
+
+/* Interior walls, axis-aligned, trimmed to the curved glass, with door gaps along their length */
+function wall(p, x1, z1, x2, z2, gaps = []) {
+  const horiz = z1 === z2;
+  const a0 = horiz ? Math.min(x1, x2) : Math.min(z1, z2), a1 = horiz ? Math.max(x1, x2) : Math.max(z1, z2);
+  let lo = Infinity, hi = -Infinity;
+  for (let a = a0; a <= a1 + 1e-6; a += 0.03) {
+    if (insidePlate(horiz ? a : x1, horiz ? z1 : a, 0.02)) { lo = Math.min(lo, a); hi = Math.max(hi, a); }
+  }
+  if (lo >= hi) return;
+  let segs = [[lo, hi]];
+  gaps.forEach(([g0, g1]) => {
+    const next = [];
+    segs.forEach(([s0, s1]) => {
+      if (g1 <= s0 || g0 >= s1) { next.push([s0, s1]); return; }
+      if (g0 > s0) next.push([s0, g0]);
+      if (g1 < s1) next.push([g1, s1]);
+    });
+    segs = next;
+  });
+  segs.forEach(([s0, s1]) => {
+    const len = s1 - s0, mid = (s0 + s1) / 2;
+    if (len < 0.05) return;
+    if (horiz) { bx(p, MAT.wall, mid, 0, z1, len, WALL_H, WALL_T); bx(p, MAT.wallCap, mid, WALL_H, z1, len, 0.012, WALL_T); }
+    else { bx(p, MAT.wall, x1, 0, mid, WALL_T, WALL_H, len); bx(p, MAT.wallCap, x1, WALL_H, mid, WALL_T, 0.012, len); }
+  });
+}
+const patch = (p, mat, x0, z0, x1, z1) => bx(p, mat, (x0 + x1) / 2, 0, (z0 + z1) / 2, x1 - x0, 0.01, z1 - z0);
+
+/* One residence on half a floor. Drawn for the east half (x from 0 to the glass); the west half is mirrored. */
+function halfResidence(p, beds, label) {
+  const R = Math.PI / 2;
+  if (beds === 1) {
+    wall(p, 0, -3.2, 10.8, -3.2, [[2.4, 3.2], [5.4, 6.2]]);
+    wall(p, 3.4, -7.85, 3.4, -3.2);
+    patch(p, MAT.tile, 0.06, -7.8, 3.34, -3.26);
+    tub(p, 1.75, -7.15, 0);
+    toilet(p, 0.43, -4.5, R);
+    vanity(p, 3.09, -5.6, -R, 1.2);
+    label('Bath', 1.7, -5.4);
+    rug(p, 5.3, -5.5, 2.6, 3.0, MAT.rug);
+    bed(p, 4.61, -5.5, R, 1.8, MAT.throwA);
+    wardrobe(p, 8.0, -3.56, Math.PI, 2.4);
+    armchair(p, 8.4, -5.9, -2.4);
+    plant(p, 9.6, -4.6);
+    label('Bedroom', 6.6, -5.5);
+    /* Study nook south of the core */
+    wall(p, 2.5, 3.0, 2.5, 6.0);
+    desk(p, 1.2, 7.4, Math.PI);
+    plant(p, 0.55, 3.6, 0.9);
+    label('Study', 1.25, 5.2);
+  } else {
+    const third = beds === 3;
+    wall(p, 0, -3.2, 10.8, -3.2, [[2.4, 3.2], [4.2, 5.0], [8.6, 9.4]]);
+    wall(p, 3.6, -7.85, 3.6, -3.2);
+    wall(p, 6.0, -7.85, 6.0, -3.2);
+    bed(p, 1.8, -6.6, 0, 1.4, MAT.throwB);
+    wardrobe(p, 1.0, -3.56, Math.PI, 1.6);
+    label(third ? 'Bedroom 3' : 'Bedroom 2', 1.8, -4.5);
+    patch(p, MAT.tile, 3.66, -7.8, 5.94, -3.26);
+    shower(p, 4.8, -7.3, 0, 1.6, 1.0);
+    toilet(p, 4.03, -5.4, R);
+    vanity(p, 5.63, -5.0, -R, 1.1);
+    label('Bath', 4.8, -6.1);
+    rug(p, 7.9, -5.5, 2.6, 3.0, MAT.rug);
+    bed(p, 7.21, -5.5, R, 1.8, MAT.throwA);
+    wardrobe(p, 7.2, -3.56, Math.PI, 1.7);
+    armchair(p, 9.2, -5.2, -2.2);
+    plant(p, 9.9, -3.9, 0.9);
+    label('Primary', 8.2, -6.4);
+    /* Second bathroom south of the core */
+    wall(p, 2.6, 3.0, 2.6, 7.85, [[3.3, 4.1]]);
+    patch(p, MAT.tile, 0.06, 3.06, 2.54, 7.8);
+    shower(p, 1.3, 7.25, Math.PI, 1.6, 1.0);
+    toilet(p, 0.43, 4.6, R);
+    vanity(p, 2.29, 5.6, -R, 1.1);
+    label('Bath 2', 1.3, 5.3);
+    if (third) {
+      wall(p, 7.6, 3.2, 7.6, 7.85);
+      wall(p, 7.6, 3.2, 10.8, 3.2, [[9.8, 10.5]]);
+      bed(p, 8.81, 4.6, R, 1.4, MAT.throwB);
+      plant(p, 8.3, 6.8, 0.9);
+      label('Bedroom 2', 9.2, 6.0);
+    }
+  }
+  /* Kitchen against the core */
+  patch(p, MAT.floorStone, 2.31, -3.14, 5.9, 1.95);
+  kitchenRun(p, 2.56, -0.9, R, 3.6, -0.9, 0.9);
+  fridge(p, 2.6, 1.42, R);
+  island(p, 4.5, -0.9, R, 2.4);
+  label('Kitchen', 3.9, -2.55);
+  dining(p, 8.9, -1.0, R, 6);
+  label('Dining', 8.9, 0.35);
+  /* Living room */
+  if (beds === 3) {
+    rug(p, 4.9, 4.7, 3.4, 2.6, MAT.rug2);
+    sofa(p, 4.9, 5.95, Math.PI, 2.6);
+    coffeeTable(p, 4.9, 4.55, 1.1, 0.6);
+    armchair(p, 3.35, 4.3, R);
+    armchair(p, 6.5, 4.3, -R);
+    floorLamp(p, 6.7, 6.2);
+    label('Living', 4.9, 3.5);
+  } else {
+    rug(p, 7.4, 3.1, 3.6, 2.8, MAT.rug2);
+    sofa(p, 7.4, 4.35, Math.PI, 2.8);
+    coffeeTable(p, 7.4, 2.9, 1.2, 0.65);
+    armchair(p, 5.5, 2.7, R);
+    armchair(p, 9.3, 2.7, -R, MAT.clay);
+    floorLamp(p, 5.6, 4.5);
+    plant(p, 9.5, 4.7);
+    label('Living', 7.4, 1.65);
+  }
+}
+
+/* A full-floor residence (sky residences and penthouses): four bedrooms round a central core */
+function fullResidence(p, label) {
+  const R = Math.PI / 2;
+  wall(p, -10.8, -3.2, 10.8, -3.2, [[-7.2, -6.4], [-3.4, -2.6], [-1.0, -0.2], [4.2, 5.0], [8.4, 9.2]]);
+  wall(p, -4.4, -7.85, -4.4, -3.2);
+  wall(p, -1.2, -7.85, -1.2, -3.2);
+  wall(p, 3.4, -7.85, 3.4, -3.2);
+  wall(p, 5.9, -7.85, 5.9, -3.2);
+  /* Primary suite */
+  rug(p, -6.2, -5.5, 2.8, 3.2, MAT.rug);
+  bed(p, -5.61, -5.5, -R, 1.9, MAT.throwA);
+  wardrobe(p, -8.5, -3.56, Math.PI, 2.2);
+  armchair(p, -8.5, -5.6, 2.3);
+  plant(p, -9.9, -4.0, 0.9);
+  label('Primary suite', -7.4, -6.3);
+  patch(p, MAT.tile, -4.34, -7.8, -1.26, -3.26);
+  tub(p, -2.8, -7.15, 0);
+  vanity(p, -1.51, -5.4, -R, 1.8, 2);
+  toilet(p, -3.95, -4.45, R);
+  label('Primary bath', -2.9, -5.7);
+  /* Bedroom 2 and its bath */
+  bed(p, 1.1, -6.6, 0, 1.6, MAT.throwB);
+  desk(p, 2.4, -3.57, Math.PI);
+  label('Bedroom 2', 1.1, -4.7);
+  patch(p, MAT.tile, 3.46, -7.8, 5.84, -3.26);
+  shower(p, 4.65, -7.3, 0, 1.5, 1.0);
+  toilet(p, 3.83, -5.4, R);
+  vanity(p, 5.59, -4.9, -R, 1.0);
+  label('Bath 2', 4.65, -6.1);
+  /* Bedroom 3 */
+  rug(p, 7.7, -5.5, 2.4, 2.8, MAT.rug);
+  bed(p, 7.11, -5.5, R, 1.6, MAT.throwA);
+  wardrobe(p, 7.0, -3.56, Math.PI, 1.5);
+  armchair(p, 9.2, -5.2, -2.2, MAT.clay);
+  plant(p, 9.9, -3.9, 0.9);
+  label('Bedroom 3', 8.4, -6.4);
+  /* Kitchen west of the core, dining beyond */
+  patch(p, MAT.floorStone, -5.9, -3.14, -2.31, 1.95);
+  kitchenRun(p, -2.56, -0.9, -R, 3.6, 0.9, -0.9);
+  fridge(p, -2.6, 1.42, -R);
+  island(p, -4.5, -0.9, -R, 2.6);
+  label('Kitchen', -3.9, -2.55);
+  dining(p, -8.6, -0.6, R, 8);
+  label('Dining', -8.6, 1.35);
+  /* Living room on the harbour side */
+  rug(p, -2.0, 5.0, 4.6, 3.0, MAT.rug2);
+  sofa(p, -2.0, 6.6, Math.PI, 3.2);
+  coffeeTable(p, -2.0, 5.0, 1.4, 0.7);
+  armchair(p, -4.6, 4.8, R);
+  armchair(p, 0.6, 4.8, -R, MAT.clay);
+  floorLamp(p, -4.4, 6.9);
+  plant(p, 0.6, 7.0);
+  label('Living', -2.0, 3.75);
+  /* Reading corner */
+  armchair(p, -7.4, 5.2, 2.4);
+  floorLamp(p, -8.4, 4.3);
+  plant(p, -6.3, 6.9, 1.1);
+  label('Reading', -7.6, 3.7);
+  /* Family room east of the core */
+  rug(p, 4.6, 0, 3.0, 3.4, MAT.rug);
+  tvUnit(p, 2.52, 0, R, 2.2);
+  sofa(p, 6.2, 0, -R, 2.8, MAT.sage);
+  coffeeTable(p, 4.4, 0, 0.7, 1.2);
+  desk(p, 10.4, -1.6, -R);
+  plant(p, 10.2, 1.8, 0.9);
+  label('Family room', 4.4, -2.3);
+  /* Powder room */
+  wall(p, 2.25, 3.0, 2.25, 5.8);
+  wall(p, 4.6, 3.0, 4.6, 5.8);
+  wall(p, 2.25, 5.8, 4.6, 5.8, [[3.0, 3.8]]);
+  patch(p, MAT.tile, 2.31, 3.06, 4.54, 5.74);
+  toilet(p, 4.17, 4.3, -R);
+  vanity(p, 2.56, 4.3, R, 0.9);
+  label('Powder', 3.4, 5.05);
+  /* Bedroom 4 */
+  wall(p, 7.6, 3.2, 7.6, 7.85);
+  wall(p, 7.6, 3.2, 10.8, 3.2, [[9.8, 10.5]]);
+  bed(p, 8.81, 4.6, R, 1.4, MAT.throwB);
+  plant(p, 8.3, 6.8, 0.9);
+  label('Bedroom 4', 9.2, 6.0);
+  plant(p, 6.6, 6.6, 1.1);
+}
+
+function liftCore(p, label) {
+  bx(p, MAT.core, 0, 0, 0, 4.5, WALL_H + 0.05, 6);
+  bx(p, MAT.lift, -1.05, WALL_H + 0.05, -1.55, 1.5, 0.01, 1.7);
+  bx(p, MAT.lift, 1.05, WALL_H + 0.05, -1.55, 1.5, 0.01, 1.7);
+  for (let i = 0; i < 9; i += 1) bx(p, MAT.stair, 0, WALL_H + 0.05, 0.4 + i * 0.27, 3.6, 0.012, 0.13);
+  label('Lifts', 0, -1.55);
+}
+
+/* Floor plate shapes in metres: the whole plate, or the east half */
+function halfFloorGeometry() {
+  const hx = IN.hx, hz = IN.hz;
+  const pts = roundedRect(hx * 2, hz * 2, IN.r).getSpacedPoints(260).filter((v) => v.x >= 0);
+  const shape = new THREE.Shape([new THREE.Vector2(0, -hz), ...pts, new THREE.Vector2(0, hz)]);
+  const g = new THREE.ExtrudeGeometry(shape, { depth: 0.04, bevelEnabled: false });
+  g.rotateX(-Math.PI / 2);
+  return g;
+}
+
+function buildInterior(floor) {
+  interiorKit();
+  const root = new THREE.Group();
+  root.position.y = levelY(floor.level) + 0.056;
+  root.rotation.y = levelAngle(floor.level);
+  root.scale.set(M_XZ, M_Y, M_XZ);
+  const labels = [], pads = [], owned = [];
+  const addLabel = (parent, text, x, z, kind = 'room', unitId = null) => {
+    const anchor = new THREE.Object3D();
+    anchor.position.set(x, WALL_H + 0.2, z);
+    parent.add(anchor);
+    labels.push({ anchor, text, kind, unitId });
+  };
+
+  if (floor.full) {
+    const geo = plate(IN.hx * 2, IN.hz * 2, IN.r, 0.04); owned.push(geo);
+    const base = new THREE.Mesh(geo, MAT.oak);
+    root.add(base);
+    const furn = new THREE.Group(); furn.position.y = 0.04; root.add(furn);
+    fullResidence(furn, (t, x, z) => addLabel(furn, t, x, z));
+    liftCore(furn, (t, x, z) => addLabel(furn, t, x, z));
+  } else {
+    const geo = halfFloorGeometry(); owned.push(geo);
+    const furnAll = new THREE.Group(); furnAll.position.y = 0.04; root.add(furnAll);
+    floor.units.forEach((unit) => {
+      const side = unit.key === 'A' ? -1 : 1;           /* A is the west half, B the east */
+      const half = new THREE.Group(); half.scale.x = side; root.add(half);
+      const mat = MAT.oak.clone();
+      const base = new THREE.Mesh(geo, mat);
+      base.userData.unitId = unit.id;
+      half.add(base);
+      pads.push(base);
+      const furn = new THREE.Group(); furn.position.y = 0.04; half.add(furn);
+      halfResidence(furn, unit.beds, (t, x, z) => addLabel(furn, t, x, z));
+      addLabel(furn, unit.id, 6.6, -1.9, 'unit', unit.id);
+    });
+    wall(furnAll, 0, -7.85, 0, -3.0);
+    wall(furnAll, 0, 3.0, 0, 7.85);
+    liftCore(furnAll, (t, x, z) => addLabel(furnAll, t, x, z));
+  }
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const glowy = o.material === MAT.glow || o.material === MAT.pane;
+    o.castShadow = !glowy;
+    o.receiveShadow = o.material !== MAT.glow;
+  });
+  root.updateMatrixWorld(true);
+  return { root, labels, pads, owned, level: floor.level };
+}
+
 function start(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
+  renderer.localClippingEnabled = true;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0x1a1a22, 40, 110);
@@ -895,16 +1399,35 @@ function start(canvas) {
   buildPodium(scene);
   const T = buildTower(scene, envMap);
 
-  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 400);
+  /* Cutting plane: everything in the tower above it disappears, so we can look down into a floor */
+  const TOP_Y = levelY(LAST) + FH + 1.6;
+  const clip = new THREE.Plane(new THREE.Vector3(0, -1, 0), TOP_Y + 2);
+  T.tower.traverse((o) => { if (o.isMesh || o.isInstancedMesh) o.material.clippingPlanes = [clip]; });
+  const roomMatrices = Array.from({ length: T.count }, (_, i) => { const m = new THREE.Matrix4(); T.rooms.getMatrixAt(i, m); return m; });
+  const hiddenMatrix = new THREE.Matrix4().makeScale(1e-4, 1e-4, 1e-4);
+
+  /* Lights for the furnished floor: off until we're looking inside */
+  const roomSun = new THREE.DirectionalLight(0xfff1de, 0);
+  roomSun.castShadow = true;
+  roomSun.shadow.mapSize.set(2048, 2048);
+  Object.assign(roomSun.shadow.camera, { left: -3.4, right: 3.4, top: 3.4, bottom: -3.4, near: 0.5, far: 40 });
+  roomSun.shadow.bias = -0.0004;
+  roomSun.shadow.normalBias = 0.01;
+  scene.add(roomSun, roomSun.target);
+  const roomFill = new THREE.AmbientLight(0xfff4e6, 0);
+  scene.add(roomFill);
+
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.02, 400);
 
   /* Bloom makes the lit windows and crown glow */
-  let composer = null;
+  let composer = null, bloom = null;
   try {
     composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 0.55, 0.6, 0.82));
+    bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.55, 0.6, 0.82);
+    composer.addPass(bloom);
     composer.addPass(new OutputPass());
-  } catch (e) { composer = null; }
+  } catch (e) { composer = null; bloom = null; }
 
   function resize() {
     const w = window.innerWidth, h = window.innerHeight;
@@ -920,6 +1443,8 @@ function start(canvas) {
   const shotList = ui.shots.map((name) => SHOTS[name]);
   const cam = { ...shotList[0] };
   let dragTheta = 0, dragVel = 0, idle = 0;
+  const roomView = { level: null, k: 0, drag0: 0 };
+  let roomMix = 0;                      /* 0 = looking at the tower, 1 = looking down into a floor */
   const exploreIndex = ui.shots.indexOf('explore');
   const ease = (t) => t * t * (3 - 2 * t);
   const isMobile = () => window.innerWidth < 860;
@@ -930,18 +1455,31 @@ function start(canvas) {
     const a = shotList[i], b = shotList[i + 1];
     const out = {};
     for (const k of ['theta', 'elev', 'radius', 'ty', 'side']) out[k] = a[k] + (b[k] - a[k]) * f;
-    /* Inside the availability chapter, a chosen floor pulls the camera in */
+    const mobile = isMobile();
+    if (mobile) { out.side = 0; out.radius *= 1.35; out.ty -= 1.2; }
+    /* Inside the availability chapter, a chosen floor flies the camera in and over the top of it */
     const weight = Math.max(0, 1 - Math.abs(ui.progress - exploreIndex) * 1.6);
     if (weight > 0) {
       out.theta += dragTheta * weight;
       if (ui.selected != null) {
-        const y = levelY(ui.selected) + FH / 2;
-        out.ty += (y - out.ty) * weight;
-        out.radius += (14 - out.radius) * weight;
-        out.elev += (0.08 - out.elev) * weight;
+        if (roomView.level !== ui.selected) {
+          /* Line the view up with this floor's turn, taking the shortest way round */
+          const a = levelAngle(ui.selected);
+          roomView.k = Math.round((cam.theta + idle - a) / (Math.PI * 2));
+          roomView.drag0 = dragTheta;
+          roomView.level = ui.selected;
+        }
+        const room = {
+          theta: levelAngle(ui.selected) + roomView.k * Math.PI * 2 + (dragTheta - roomView.drag0) - idle,
+          elev: 1.27,
+          radius: mobile ? 15 : 11.2,
+          ty: levelY(ui.selected) + 0.1 - (mobile ? 0.9 : 0),
+          side: mobile ? 0 : -1.2
+        };
+        for (const k of ['theta', 'elev', 'radius', 'ty', 'side']) out[k] += (room[k] - out[k]) * weight;
       }
     }
-    if (isMobile()) { out.side = 0; out.radius *= 1.35; out.ty -= 1.2; }
+    if (ui.selected == null) roomView.level = null;
     return { shot: out, explore: weight > 0.5 };
   }
 
@@ -956,6 +1494,16 @@ function start(canvas) {
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects([T.glass, T.rooms], false);
     return hits.length ? FIRST + hits[0].instanceId : null;
+  }
+  /* Inside a floor: the residences themselves are the targets */
+  let interior = null, hoverUnit = null;
+  const inRoom = () => exploreActive && ui.selected != null && roomMix > 0.6;
+  function pickUnit(event) {
+    if (!interior || !interior.pads.length) return null;
+    pointer.set((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1);
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects(interior.pads, false);
+    return hits.length ? hits[0].object.userData.unitId : null;
   }
   function showTip(level, event) {
     if (level == null) { tip.classList.remove('is-on'); return; }
@@ -985,6 +1533,14 @@ function start(canvas) {
       return;
     }
     if (!exploreActive) { showTip(null); return; }
+    if (inRoom()) {
+      hoverUnit = pickUnit(event);
+      ui.setHover(null);
+      showTip(null);
+      canvas.classList.toggle('on-floor', hoverUnit != null && hoverUnit !== ui.unit);
+      return;
+    }
+    hoverUnit = null;
     const level = pick(event);
     ui.setHover(level);
     canvas.classList.toggle('on-floor', level != null);
@@ -995,13 +1551,18 @@ function start(canvas) {
     dragging = false;
     canvas.classList.remove('is-dragging');
     if (moved < 6) {
+      if (inRoom()) {
+        const unitId = pickUnit(event);
+        if (unitId && unitId !== ui.unit) ui.select(ui.selected, unitId);
+        return;
+      }
       const level = pick(event);
       if (level != null) ui.select(level);
     }
   };
   canvas.addEventListener('pointerup', endDrag);
   canvas.addEventListener('pointercancel', () => { dragging = false; canvas.classList.remove('is-dragging'); });
-  canvas.addEventListener('pointerleave', () => { pointerIn = false; ui.setHover(null); showTip(null); });
+  canvas.addEventListener('pointerleave', () => { pointerIn = false; hoverUnit = null; ui.setHover(null); showTip(null); });
 
   /* ---- Floor colours: warm by default; by status in the availability view ---- */
   const C = { available: new THREE.Color('#e8b86e'), reserved: new THREE.Color('#3d4650'), leased: new THREE.Color('#14171a'), selected: new THREE.Color('#fff1cf'), dim: new THREE.Color('#0c0e10') };
@@ -1024,11 +1585,105 @@ function start(canvas) {
     }
     T.rooms.instanceColor.needsUpdate = true;
     const place = (ring, level) => {
-      ring.visible = level != null && statusMix > 0.3;
+      ring.visible = level != null && statusMix > 0.3 && roomMix < 0.25;
       if (ring.visible) { ring.position.y = levelY(level) + 0.03; ring.rotation.y = levelAngle(level); }
     };
     place(T.selectRing, ui.selected);
     place(T.hoverRing, ui.hover !== ui.selected ? ui.hover : null);
+  }
+
+  /* ---- Furnished floor view ---- */
+  const labelLayer = document.getElementById('room-labels');
+  const hint = document.getElementById('room-hint');
+  const hintText = document.getElementById('room-hint-text');
+  const unitById = new Map(floors.flatMap((f) => f.units.map((u) => [u.id, u])));
+  const v3 = new THREE.Vector3();
+  const TINT = { selected: new THREE.Color(0x3a2810), hover: new THREE.Color(0x1c140a), none: new THREE.Color(0x000000) };
+  let hiddenIndex = -1, clipY = TOP_Y + 2, shownUnit = undefined, shownHover = undefined;
+
+  function setInterior(level) {
+    if (interior) {
+      scene.remove(interior.root);
+      interior.owned.forEach((g) => g.dispose());
+      interior.pads.forEach((m) => m.material.dispose());
+      interior = null;
+      labelLayer.innerHTML = '';
+    }
+    if (level == null) return;
+    interior = buildInterior(floors.find((f) => f.level === level));
+    scene.add(interior.root);
+    interior.labels.forEach((l) => {
+      const el = document.createElement('div');
+      el.className = 'room-label' + (l.kind === 'unit' ? ' unit' : '');
+      el.textContent = l.kind === 'unit' ? `${l.text} · ${unitById.get(l.unitId).beds} bed` : l.text;
+      labelLayer.appendChild(el);
+      l.el = el;
+    });
+    shownUnit = undefined; shownHover = undefined;
+  }
+
+  function updateRoom(dt, explore) {
+    const want = explore && ui.selected != null ? 1 : 0;
+    roomMix += (want - roomMix) * (1 - Math.exp(-dt * (want ? 2.4 : 3.5)));
+    if (reduced) roomMix = want;
+
+    /* Build the model for the chosen floor; drop it once we've flown back out */
+    const level = ui.selected;
+    if (level != null && (!interior || interior.level !== level)) setInterior(level);
+    if (level == null && interior && roomMix < 0.02) setInterior(null);
+    if (interior) interior.root.visible = roomMix > 0.01;
+
+    /* Peel the floors away from the top down to just above the chosen floor */
+    const cut = level != null && want ? levelY(level) + 0.055 + 0.11 : TOP_Y + 2;
+    clipY += (cut - clipY) * (reduced ? 1 : 1 - Math.exp(-dt * 2.6));
+    clip.constant = clipY;
+
+    /* Hide the glowing block that stands in for this floor's interior */
+    const hide = interior && roomMix > 0.01 ? interior.level - FIRST : -1;
+    if (hide !== hiddenIndex) {
+      if (hiddenIndex >= 0) T.rooms.setMatrixAt(hiddenIndex, roomMatrices[hiddenIndex]);
+      if (hide >= 0) T.rooms.setMatrixAt(hide, hiddenMatrix);
+      T.rooms.instanceMatrix.needsUpdate = true;
+      hiddenIndex = hide;
+    }
+
+    /* Lights and bloom for the interior */
+    const floorY = interior ? levelY(interior.level) : 0;
+    roomSun.intensity = 2.3 * roomMix;
+    roomFill.intensity = 0.75 * roomMix;
+    roomSun.position.set(1.6, floorY + 12, 4.2);
+    roomSun.target.position.set(0, floorY, 0);
+    if (bloom) bloom.strength = 0.55 - 0.32 * roomMix;
+
+    /* Highlight the selected residence on a two-residence floor */
+    if (interior && (shownUnit !== ui.unit || shownHover !== hoverUnit)) {
+      interior.pads.forEach((m) => {
+        const id = m.userData.unitId;
+        m.material.emissive.copy(id === ui.unit ? TINT.selected : id === hoverUnit ? TINT.hover : TINT.none);
+      });
+      interior.labels.forEach((l) => { if (l.kind === 'unit') l.el.classList.toggle('dim', l.unitId !== ui.unit); });
+      shownUnit = ui.unit; shownHover = hoverUnit;
+    }
+
+    /* Labels follow the model on screen */
+    const labelAlpha = Math.max(0, Math.min(1, (roomMix - 0.7) / 0.25));
+    labelLayer.style.opacity = labelAlpha;
+    if (interior && labelAlpha > 0) {
+      const w = window.innerWidth, h = window.innerHeight;
+      interior.labels.forEach((l) => {
+        l.anchor.getWorldPosition(v3).project(camera);
+        const x = (v3.x * 0.5 + 0.5) * w, y = (-v3.y * 0.5 + 0.5) * h;
+        l.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`;
+      });
+    }
+
+    const on = roomMix > 0.6 && level != null;
+    hint.classList.toggle('is-on', on);
+    if (on && hint.dataset.level !== String(level)) {
+      hint.dataset.level = level;
+      const two = interior && interior.pads.length > 1;
+      hintText.innerHTML = `<strong>Floor ${level}</strong> · drag to turn${two ? ' · click a residence to switch' : ''}`;
+    }
   }
 
   /* ---- Loop ---- */
@@ -1062,6 +1717,8 @@ function start(canvas) {
     camera.position.addScaledVector(right, cam.side * cam.radius * 0.16);
     camera.lookAt(lookAt);
 
+    camera.updateMatrixWorld();
+    updateRoom(dt, explore);
     paintFloors(dt);
     if (composer) composer.render(); else renderer.render(scene, camera);
     if (visible) requestAnimationFrame(frame);
