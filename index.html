@@ -1,0 +1,1811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset='utf-8'>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calder Quay: residences above the harbour</title>
+<meta name="description" content="Calder Quay is a concept leasing site for a twisting glass residential tower. Scroll to fly around the building, then pick a floor to see what is available.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<style>
+:root {
+  --bg: #070807;
+  --ink: #ece7dc;
+  --muted: #9a958b;
+  --brass: #c8a46b;
+  --brass-soft: rgba(200, 164, 107, .16);
+  --line: rgba(236, 231, 220, .14);
+  --panel: rgba(9, 10, 10, .72);
+  --available: #d9b77a;
+  --reserved: #7f8a94;
+  --leased: #4b4f52;
+  --serif: 'Cormorant Garamond', 'Iowan Old Style', Georgia, serif;
+  --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+canvas, img, svg { display: block; }
+a { color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
+h1, h2, h3 { margin: 0; font-weight: 500; }
+p { margin: 0; }
+
+/* The 3D scene sits behind the whole page */
+#scene { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0; touch-action: pan-y; }
+#scene.can-explore { cursor: grab; }
+#scene.is-dragging { cursor: grabbing; }
+#scene.on-floor { cursor: pointer; }
+.scene-fallback { position: fixed; inset: 0; z-index: 0; display: grid; place-items: end center; padding-bottom: 12vh;
+  background: radial-gradient(120% 70% at 50% 100%, #3a2416 0%, #12161d 55%, #070807 100%); color: var(--muted); font-size: 13px; }
+.scene-veil { position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(90deg, rgba(7,8,7,.72) 0%, rgba(7,8,7,.18) 46%, rgba(7,8,7,0) 70%); transition: opacity .6s; }
+body[data-side="right"] .scene-veil { background: linear-gradient(270deg, rgba(7,8,7,.72) 0%, rgba(7,8,7,.18) 46%, rgba(7,8,7,0) 70%); }
+
+/* Nav */
+.nav { position: fixed; top: 0; left: 0; right: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between;
+  padding: 20px clamp(20px, 4vw, 56px); pointer-events: none; }
+.nav > * { pointer-events: auto; }
+.wordmark { font: 500 22px/1 var(--serif); letter-spacing: .28em; text-decoration: none; }
+.wordmark small { display: block; margin-top: 4px; font: 500 9px/1 var(--sans); letter-spacing: .32em; color: var(--muted); }
+.nav-links { display: flex; gap: 4px; list-style: none; margin: 0; padding: 4px; border: 1px solid var(--line); border-radius: 999px;
+  background: rgba(9,10,10,.55); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.nav-links a { display: block; padding: 8px 14px; border-radius: 999px; font-size: 12px; letter-spacing: .08em; text-decoration: none; color: var(--muted); transition: color .2s, background .2s; }
+.nav-links a:hover, .nav-links a.is-current { color: var(--ink); background: rgba(236,231,220,.08); }
+.nav-cta { padding: 10px 18px; border-radius: 999px; background: var(--brass); color: #16110a; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-decoration: none; }
+
+/* Progress rail */
+.rail { position: fixed; right: clamp(14px, 2vw, 28px); top: 50%; transform: translateY(-50%); z-index: 15; display: grid; gap: 10px; }
+.rail a { width: 6px; height: 6px; border-radius: 50%; background: rgba(236,231,220,.25); transition: background .3s, transform .3s; }
+.rail a.is-current { background: var(--brass); transform: scale(1.6); }
+
+/* Story sections */
+main { position: relative; z-index: 2; pointer-events: none; }
+.chapter { min-height: 100vh; display: flex; align-items: center; padding: 120px clamp(20px, 6vw, 96px); pointer-events: none; }
+.chapter.right { justify-content: flex-end; }
+.chapter > * { pointer-events: auto; }
+.panel { width: min(440px, 100%); padding: 32px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel);
+  backdrop-filter: blur(18px) saturate(1.1); -webkit-backdrop-filter: blur(18px) saturate(1.1); }
+.eyebrow { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; font-size: 11px; font-weight: 500; letter-spacing: .26em; text-transform: uppercase; color: var(--brass); }
+.eyebrow::before { content: ""; width: 28px; height: 1px; background: var(--brass); }
+.disp { font: 500 clamp(36px, 4.6vw, 60px)/1.02 var(--serif); letter-spacing: -.01em; }
+.panel p.lede { margin-top: 18px; color: #cfc9bd; font-size: 16px; }
+.panel p + p { margin-top: 12px; }
+
+/* Hero */
+.hero { min-height: 100vh; align-items: flex-end; padding-bottom: 12vh; }
+.hero-copy { max-width: 640px; }
+.hero h1 { font: 500 clamp(56px, 9vw, 132px)/.92 var(--serif); letter-spacing: -.02em; }
+.hero h1 em { font-style: italic; color: var(--brass); }
+.hero .lede { margin-top: 22px; max-width: 440px; font-size: 17px; color: #d6d0c4; }
+.hero-meta { display: flex; gap: 28px; margin-top: 34px; padding-top: 22px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.hero-meta div { font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+.hero-meta strong { display: block; font: 500 26px/1.1 var(--serif); color: var(--ink); letter-spacing: 0; }
+.scroll-cue { margin-top: 34px; display: inline-flex; align-items: center; gap: 12px; font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: var(--muted); text-decoration: none; }
+.scroll-cue span { width: 1px; height: 38px; background: linear-gradient(var(--brass), transparent); animation: cue 2.2s ease-in-out infinite; transform-origin: top; }
+@keyframes cue { 0% { transform: scaleY(0); } 50% { transform: scaleY(1); } 100% { transform: scaleY(1); opacity: 0; } }
+
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-top: 26px; background: var(--line); border: 1px solid var(--line); }
+.stats div { padding: 16px; background: rgba(9,10,10,.9); font-size: 12px; color: var(--muted); }
+.stats strong { display: block; font: 500 30px/1.1 var(--serif); color: var(--ink); }
+
+.amenities { list-style: none; margin: 24px 0 0; padding: 0; border-top: 1px solid var(--line); }
+.amenities li { display: grid; grid-template-columns: 54px 1fr; gap: 6px 14px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.amenities .lvl { grid-row: span 2; font: 500 13px/1.6 var(--sans); color: var(--brass); letter-spacing: .06em; }
+.amenities h3 { font: 500 20px/1.2 var(--serif); }
+.amenities p { font-size: 13px; color: var(--muted); }
+
+/* Availability */
+.explore { min-height: 220vh; align-items: flex-start; }
+.explore .panel { position: sticky; top: 92px; width: min(460px, 100%); max-height: calc(100vh - 116px); display: flex; flex-direction: column; padding: 26px 26px 0; }
+.explore .disp { font-size: clamp(32px, 3.4vw, 44px); }
+.explore-hint { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 18px; }
+.chip { padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; font-size: 12px; cursor: pointer; transition: border-color .2s, background .2s; }
+.chip:hover { border-color: rgba(236,231,220,.35); }
+.chip[aria-pressed="true"] { border-color: var(--brass); background: var(--brass-soft); color: #f3e3c4; }
+.toggle { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 13px; color: var(--muted); cursor: pointer; width: fit-content; }
+.toggle input { accent-color: var(--brass); width: 15px; height: 15px; }
+.legend { display: flex; gap: 14px; margin-top: 12px; font-size: 11px; color: var(--muted); letter-spacing: .04em; }
+.legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--c); vertical-align: 0; }
+
+.detail { margin-top: 18px; padding: 18px; border: 1px solid var(--line); background: rgba(236,231,220,.03); }
+.detail[hidden] { display: none; }
+.detail-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.detail-head h3 { font: 500 26px/1.1 var(--serif); }
+.detail-head button { border: 0; background: none; color: var(--muted); font-size: 12px; cursor: pointer; padding: 4px; }
+.detail-head button:hover { color: var(--ink); }
+.detail-body { display: grid; grid-template-columns: 128px 1fr; gap: 16px; margin-top: 14px; align-items: start; }
+.plan { width: 128px; height: 128px; }
+.units { display: grid; gap: 8px; }
+.unit { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); background: transparent; text-align: left; cursor: pointer; transition: border-color .2s, background .2s; }
+.unit:hover { border-color: rgba(236,231,220,.32); }
+.unit[aria-pressed="true"] { border-color: var(--brass); background: var(--brass-soft); }
+.unit-top { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; font-size: 13px; }
+.unit-sub { font-size: 12px; color: var(--muted); }
+.pill { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--c); }
+.detail-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.detail-foot p { font-size: 12px; color: var(--muted); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 18px; border: 0; border-radius: 999px; background: var(--brass); color: #16110a; font-size: 12px; font-weight: 600; letter-spacing: .06em; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.btn:disabled { background: #3a3c3d; color: #8a8d8f; cursor: not-allowed; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+
+.list-head { display: grid; grid-template-columns: 52px 1fr auto; gap: 10px; margin-top: 18px; padding: 0 0 8px; border-bottom: 1px solid var(--line); font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+.list { flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; margin: 0 -26px; padding: 0 26px 18px; scrollbar-width: thin; scrollbar-color: rgba(236,231,220,.2) transparent; }
+.row { display: grid; grid-template-columns: 52px 1fr auto; gap: 10px; align-items: center; width: 100%; padding: 11px 0; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; cursor: pointer; transition: background .15s; }
+.row:hover, .row.is-hover { background: rgba(236,231,220,.04); }
+.row.is-selected { background: var(--brass-soft); }
+.row-floor { font: 500 22px/1 var(--serif); padding-left: 6px; }
+.row-main { font-size: 13px; }
+.row-main small { display: block; color: var(--muted); font-size: 12px; }
+.row-price { text-align: right; font-size: 13px; padding-right: 6px; }
+.row-price .pill { display: block; }
+.empty { padding: 26px 0; color: var(--muted); font-size: 13px; }
+
+.floor-tip { position: fixed; z-index: 30; pointer-events: none; padding: 8px 12px; border: 1px solid var(--line); background: rgba(9,10,10,.88); font-size: 12px; white-space: nowrap; transform: translate(14px, -50%); opacity: 0; transition: opacity .15s; }
+.floor-tip.is-on { opacity: 1; }
+.floor-tip strong { font: 500 18px/1 var(--serif); margin-right: 8px; }
+
+/* Enquire */
+.enquire .panel { width: min(520px, 100%); }
+.concierge { display: grid; grid-template-columns: 96px 1fr; gap: 18px; align-items: center; margin: 22px 0 6px; }
+.concierge canvas { width: 96px; height: 96px; }
+.concierge p { font-size: 13px; color: var(--muted); }
+.concierge strong { display: block; color: var(--ink); font-weight: 600; font-size: 14px; }
+form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+label.field { display: grid; gap: 6px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+label.field.wide { grid-column: 1 / -1; }
+.field input, .field select, .field textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 2px; background: rgba(236,231,220,.04); font-size: 14px; letter-spacing: 0; text-transform: none; }
+.field select option { background: #121313; }
+.field textarea { min-height: 84px; resize: vertical; }
+.field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--brass); }
+.form-foot { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.form-foot p { font-size: 12px; color: var(--muted); max-width: 260px; }
+.form-done { margin-top: 20px; padding: 18px; border: 1px solid var(--brass); background: var(--brass-soft); font-size: 14px; }
+.form-done[hidden] { display: none; }
+
+/* Footer with ASCII band */
+footer { position: relative; z-index: 2; background: #0a0600; border-top: 1px solid rgba(255,176,38,.18); overflow: hidden; }
+.ascii-band { position: relative; height: 260px; }
+.ascii-band canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .55; }
+.ascii-band .big { position: absolute; inset: 0; display: grid; place-items: center; font: 500 clamp(64px, 14vw, 200px)/1 var(--serif); letter-spacing: .2em; padding-left: .2em; color: #f3e3c4;
+  text-shadow: 0 0 40px rgba(10,6,0,.9), 0 0 2px rgba(10,6,0,1); pointer-events: none; }
+.foot { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; padding: 28px clamp(20px, 6vw, 96px) 36px; font-size: 12px; color: #9b8a6c; background: #0a0600; position: relative; }
+
+:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+@media (max-width: 860px) {
+  .nav-links { display: none; }
+  .rail { display: none; }
+  .chapter, .chapter.right { justify-content: center; align-items: flex-end; padding: 100px 16px 40px; }
+  .hero { padding-bottom: 8vh; }
+  .scene-veil, body[data-side="right"] .scene-veil { background: linear-gradient(0deg, rgba(7,8,7,.82) 0%, rgba(7,8,7,.1) 55%, rgba(7,8,7,0) 100%); }
+  .panel { padding: 24px; }
+  .explore { min-height: auto; }
+  .explore .panel { position: relative; top: 0; max-height: none; }
+  .list { max-height: 50vh; }
+  form { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .scroll-cue span { animation: none; }
+}
+</style>
+</head>
+<body data-side="left">
+
+<canvas id="scene" aria-label="3D model of the Calder Quay tower. In the availability section, drag to turn it and select a floor."></canvas>
+<div class="scene-fallback" id="scene-fallback" hidden>The 3D tower needs WebGL and a connection to load. Everything else still works.</div>
+<div class="scene-veil" aria-hidden="true"></div>
+
+<header class="nav">
+  <a class="wordmark" href="#top">CALDER<small>QUAY RESIDENCES</small></a>
+  <ul class="nav-links">
+    <li><a href="#tower">The tower</a></li>
+    <li><a href="#twist">Design</a></li>
+    <li><a href="#amenities">Amenities</a></li>
+    <li><a href="#availability">Availability</a></li>
+  </ul>
+  <a class="nav-cta" href="#enquire">Book a tour</a>
+</header>
+
+<nav class="rail" aria-label="Sections">
+  <a href="#top" aria-label="Intro"></a>
+  <a href="#tower" aria-label="The tower"></a>
+  <a href="#twist" aria-label="Design"></a>
+  <a href="#amenities" aria-label="Amenities"></a>
+  <a href="#availability" aria-label="Availability"></a>
+  <a href="#enquire" aria-label="Book a tour"></a>
+</nav>
+
+<main>
+  <section class="chapter hero" id="top" data-shot="hero" data-side="left">
+    <div class="hero-copy">
+      <p class="eyebrow">Now leasing · Spring 2028</p>
+      <h1>Calder<br><em>Quay</em></h1>
+      <p class="lede">Thirty-six storeys of glass on the edge of the harbour. Every floor turns a little further toward the water.</p>
+      <div class="hero-meta">
+        <div><strong>56</strong>residences</div>
+        <div><strong>1–4</strong>bedrooms</div>
+        <div><strong>From $4,180</strong>per month</div>
+      </div>
+      <a class="scroll-cue" href="#tower"><span></span>Scroll to fly around</a>
+    </div>
+  </section>
+
+  <section class="chapter" id="tower" data-shot="crown" data-side="left">
+    <div class="panel">
+      <p class="eyebrow">The tower</p>
+      <h2 class="disp">A lantern at the top of the quay</h2>
+      <p class="lede">The crown is a ring of bronze fins lit from inside. After dark you can pick it out from the far side of the harbour.</p>
+      <div class="stats">
+        <div><strong>131 m</strong>to the crown</div>
+        <div><strong>36</strong>storeys</div>
+        <div><strong>3.6 m</strong>floor to floor</div>
+        <div><strong>48°</strong>total twist</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter right" id="twist" data-shot="twist" data-side="right">
+    <div class="panel">
+      <p class="eyebrow">Design</p>
+      <h2 class="disp">Each floor turns one and a half degrees</h2>
+      <p class="lede">The floor plates rotate as they rise, so no two floors look out at quite the same view. Balconies follow the turn, and every residence above floor 16 gets a piece of the water.</p>
+      <p>The glass runs floor to ceiling, held by slim bronze fins that shade the rooms from the low afternoon sun.</p>
+    </div>
+  </section>
+
+  <section class="chapter" id="amenities" data-shot="amenities" data-side="left">
+    <div class="panel">
+      <p class="eyebrow">Amenities</p>
+      <h2 class="disp">The podium is the garden</h2>
+      <ul class="amenities">
+        <li><span class="lvl">L3</span><h3>25 m pool deck</h3><p>Heated year round, facing south over the harbour.</p></li>
+        <li><span class="lvl">L3</span><h3>Roof garden</h3><p>Planted terraces, fire pits and a grilling kitchen.</p></li>
+        <li><span class="lvl">L2</span><h3>Residents' club</h3><p>Library lounge, co-working rooms and a private dining room.</p></li>
+        <li><span class="lvl">L1</span><h3>Lobby and concierge</h3><p>Staffed 24 hours, with parcel rooms and cold storage.</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="chapter explore" id="availability" data-shot="explore" data-side="left">
+    <div class="panel" id="explore-panel">
+      <p class="eyebrow">Availability</p>
+      <h2 class="disp">Pick a floor</h2>
+      <p class="explore-hint">Select a floor on the tower or in the list. Drag the tower to turn it.</p>
+      <div class="filters" role="group" aria-label="Bedrooms">
+        <button class="chip" type="button" data-beds="all" aria-pressed="true">All</button>
+        <button class="chip" type="button" data-beds="1" aria-pressed="false">1 bed</button>
+        <button class="chip" type="button" data-beds="2" aria-pressed="false">2 bed</button>
+        <button class="chip" type="button" data-beds="3" aria-pressed="false">3 bed</button>
+        <button class="chip" type="button" data-beds="4" aria-pressed="false">4 bed +</button>
+      </div>
+      <label class="toggle"><input type="checkbox" id="only-available" checked> Show available only</label>
+      <div class="legend" aria-hidden="true">
+        <span style="--c: var(--available)">Available</span>
+        <span style="--c: var(--reserved)">Reserved</span>
+        <span style="--c: var(--leased)">Leased</span>
+      </div>
+
+      <div class="detail" id="detail" hidden aria-live="polite">
+        <div class="detail-head">
+          <h3 id="detail-title">Floor 22</h3>
+          <button type="button" id="detail-close">Clear</button>
+        </div>
+        <div class="detail-body">
+          <svg class="plan" id="plan" viewBox="-70 -70 140 140" role="img" aria-label="Floor plate"></svg>
+          <div class="units" id="units"></div>
+        </div>
+        <div class="detail-foot">
+          <p id="detail-note">Harbour views</p>
+          <button class="btn" type="button" id="tour-btn">Book a tour</button>
+        </div>
+      </div>
+
+      <div class="list-head" aria-hidden="true"><span>Floor</span><span>Residence</span><span>Rent</span></div>
+      <div class="list" id="list" role="list"></div>
+    </div>
+  </section>
+
+  <section class="chapter right enquire" id="enquire" data-shot="enquire" data-side="right">
+    <div class="panel">
+      <p class="eyebrow">Book a tour</p>
+      <h2 class="disp">See it from the inside</h2>
+      <div class="concierge">
+        <canvas class="orb-fx" data-orb="chromaticMetal" data-bg="none" aria-hidden="true"></canvas>
+        <p><strong>Leasing concierge</strong>Tell us which residence you like and when you can visit. Tours run daily from the sales gallery on the quay.</p>
+      </div>
+      <form id="enquiry" novalidate>
+        <label class="field">Name<input name="name" autocomplete="name" required></label>
+        <label class="field">Email<input name="email" type="email" autocomplete="email" required></label>
+        <label class="field">Residence<select name="residence" id="residence-select"><option value="">Not sure yet</option></select></label>
+        <label class="field">Move in<select name="move"><option>Spring 2028</option><option>Summer 2028</option><option>Autumn 2028</option><option>Later</option></select></label>
+        <label class="field wide">Anything else<textarea name="note" placeholder="Pets, parking, a view you have in mind"></textarea></label>
+        <div class="form-foot">
+          <p>Concept page: nothing you enter here is sent anywhere.</p>
+          <button class="btn" type="submit">Request a tour</button>
+        </div>
+      </form>
+      <div class="form-done" id="form-done" hidden></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="ascii-band">
+    <canvas class="ascii-fx" data-look="Ember" aria-hidden="true"></canvas>
+    <div class="big" aria-hidden="true">CALDER</div>
+  </div>
+  <div class="foot">
+    <span>Calder Quay is a design concept. The building, residences and prices are invented.</span>
+    <span>Tower modelled in code with Three.js</span>
+  </div>
+</footer>
+
+<div class="floor-tip" id="floor-tip" aria-hidden="true"></div>
+
+<script>
+/* ---------- Residences: invented, generated with a fixed seed so every visit matches ---------- */
+window.CALDER = (function () {
+  const FIRST = 4, LAST = 35;
+  let seed = 9;
+  const random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const floors = [];
+  for (let level = FIRST; level <= LAST; level += 1) {
+    let types;
+    if (level <= 15) types = [{ key: 'A', beds: 2, baths: 2, sqft: 1140 }, { key: 'B', beds: 1, baths: 1, sqft: 780 }];
+    else if (level <= 27) types = [{ key: 'A', beds: 3, baths: 2.5, sqft: 1620 }, { key: 'B', beds: 2, baths: 2, sqft: 1260 }];
+    else if (level <= 33) types = [{ key: 'S', beds: 4, baths: 3.5, sqft: 2480, name: 'Sky residence' }];
+    else types = [{ key: 'PH', beds: 4, baths: 4.5, sqft: level === LAST ? 3920 : 3600, name: 'Penthouse' }];
+    const units = types.map((type) => {
+      const roll = random();
+      const status = roll < 0.47 ? 'available' : roll < 0.7 ? 'reserved' : 'leased';
+      const rate = 3.62 * (1 + (level - FIRST) * 0.011) * (type.key === 'PH' ? 1.25 : 1);
+      const rent = Math.round((type.sqft * rate) / 10) * 10;
+      return { ...type, id: level + type.key, level, status, rent, name: type.name || 'Residence' };
+    });
+    floors.push({ level, units, full: units.length === 1 });
+  }
+  return { floors, FIRST, LAST, TWIST_DEG: 1.5 };
+})();
+</script>
+
+<script>
+/* ---------- Page UI: scroll state, availability list, floor detail, form ---------- */
+(function () {
+  const { floors, FIRST, TWIST_DEG } = window.CALDER;
+  const STATUS_COLOUR = { available: 'var(--available)', reserved: 'var(--reserved)', leased: 'var(--leased)' };
+  const money = (n) => '$' + n.toLocaleString('en-US');
+  const bedLabel = (b) => b + ' bed';
+  const ui = window.CALDER_UI = { selected: null, hover: null, listeners: [] };
+  const emit = () => ui.listeners.forEach((fn) => fn());
+
+  let bedFilter = 'all';
+  let onlyAvailable = true;
+  let selectedUnit = null;
+
+  const list = document.getElementById('list');
+  const detail = document.getElementById('detail');
+  const unitsEl = document.getElementById('units');
+  const plan = document.getElementById('plan');
+  const select = document.getElementById('residence-select');
+
+  function matches(unit) {
+    if (onlyAvailable && unit.status !== 'available') return false;
+    if (bedFilter === 'all') return true;
+    return bedFilter === '4' ? unit.beds >= 4 : unit.beds === Number(bedFilter);
+  }
+
+  function renderList() {
+    const rows = [];
+    floors.slice().reverse().forEach((floor) => {
+      floor.units.filter(matches).forEach((unit) => {
+        rows.push(`<button class="row" type="button" role="listitem" data-level="${floor.level}" data-unit="${unit.id}">
+          <span class="row-floor">${floor.level}</span>
+          <span class="row-main">${unit.name} ${unit.id}<small>${bedLabel(unit.beds)} · ${unit.baths} bath · ${unit.sqft.toLocaleString('en-US')} sq ft</small></span>
+          <span class="row-price">${money(unit.rent)}<span class="pill" style="--c:${STATUS_COLOUR[unit.status]}">${unit.status}</span></span>
+        </button>`);
+      });
+    });
+    list.innerHTML = rows.length ? rows.join('') : '<p class="empty">Nothing matches. Try another filter.</p>';
+    markRows();
+  }
+
+  function markRows() {
+    list.querySelectorAll('.row').forEach((row) => {
+      const level = Number(row.dataset.level);
+      row.classList.toggle('is-selected', level === ui.selected);
+      row.classList.toggle('is-hover', level === ui.hover && level !== ui.selected);
+    });
+  }
+
+  /* Which way a residence looks, worked out from the floor's rotation. North is up the page, the harbour is south. */
+  function facing(level, unit) {
+    const angle = (level - FIRST) * TWIST_DEG * Math.PI / 180;
+    if (unit.key === 'S' || unit.key === 'PH') return 'All four sides, harbour and city';
+    const side = unit.key === 'A' ? -1 : 1;
+    const x = side * Math.cos(angle), z = -side * Math.sin(angle);
+    const bearing = (Math.atan2(x, -z) * 180 / Math.PI + 360) % 360;
+    const names = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+    const name = names[Math.round(bearing / 45) % 8];
+    return 'Faces ' + name + (bearing > 100 && bearing < 260 ? ', harbour views' : ', city views');
+  }
+
+  function drawPlan(floor) {
+    const deg = -(floor.level - FIRST) * TWIST_DEG;
+    const w = 88, d = 64, r = 20;
+    let shading = '';
+    if (!floor.full) {
+      const unit = selectedUnit && selectedUnit.level === floor.level ? selectedUnit : null;
+      const left = !unit || unit.key === 'A';
+      shading = `<clipPath id="plate"><rect x="${-w / 2}" y="${-d / 2}" width="${w}" height="${d}" rx="${r}"/></clipPath>
+        <rect clip-path="url(#plate)" x="${left ? -w / 2 : 0}" y="${-d / 2}" width="${w / 2}" height="${d}" fill="rgba(200,164,107,.28)"/>
+        <line x1="0" y1="${-d / 2}" x2="0" y2="${d / 2}" stroke="rgba(236,231,220,.5)" stroke-width="1"/>
+        <text x="${-w / 4}" y="4" fill="#ece7dc" font-size="10" text-anchor="middle" font-family="Inter">A</text>
+        <text x="${w / 4}" y="4" fill="#ece7dc" font-size="10" text-anchor="middle" font-family="Inter">B</text>`;
+    } else {
+      shading = `<rect x="${-w / 2}" y="${-d / 2}" width="${w}" height="${d}" rx="${r}" fill="rgba(200,164,107,.28)"/>`;
+    }
+    plan.innerHTML = `
+      <circle r="66" fill="none" stroke="rgba(236,231,220,.1)"/>
+      <text x="0" y="-55" fill="#c8a46b" font-size="9" text-anchor="middle" font-family="Inter" letter-spacing="1">N</text>
+      <text x="0" y="62" fill="#9a958b" font-size="7" text-anchor="middle" font-family="Inter" letter-spacing="1">HARBOUR</text>
+      <g transform="rotate(${deg})">
+        ${shading}
+        <rect x="${-w / 2}" y="${-d / 2}" width="${w}" height="${d}" rx="${r}" fill="none" stroke="#ece7dc" stroke-width="1.4"/>
+        <rect x="-9" y="-12" width="18" height="24" fill="#070807" stroke="rgba(236,231,220,.5)"/>
+      </g>`;
+  }
+
+  function renderDetail() {
+    if (ui.selected == null) { detail.hidden = true; return; }
+    const floor = floors.find((f) => f.level === ui.selected);
+    if (!selectedUnit || selectedUnit.level !== floor.level) {
+      selectedUnit = floor.units.find((u) => u.status === 'available') || floor.units[0];
+    }
+    detail.hidden = false;
+    document.getElementById('detail-title').textContent = 'Floor ' + floor.level;
+    unitsEl.innerHTML = floor.units.map((unit) => `
+      <button class="unit" type="button" data-unit="${unit.id}" aria-pressed="${unit === selectedUnit}">
+        <span class="unit-top"><span>${unit.name} ${unit.id}</span><span class="pill" style="--c:${STATUS_COLOUR[unit.status]}">${unit.status}</span></span>
+        <span class="unit-sub">${bedLabel(unit.beds)} · ${unit.baths} bath · ${unit.sqft.toLocaleString('en-US')} sq ft · ${money(unit.rent)}/mo</span>
+      </button>`).join('');
+    document.getElementById('detail-note').textContent = facing(floor.level, selectedUnit);
+    const tour = document.getElementById('tour-btn');
+    tour.disabled = selectedUnit.status === 'leased';
+    tour.textContent = selectedUnit.status === 'leased' ? 'Leased' : selectedUnit.status === 'reserved' ? 'Join waitlist' : 'Book a tour';
+    drawPlan(floor);
+  }
+
+  ui.select = function (level, unitId) {
+    ui.selected = level;
+    selectedUnit = null;
+    if (level != null && unitId) selectedUnit = floors.find((f) => f.level === level).units.find((u) => u.id === unitId);
+    renderDetail();
+    markRows();
+    const row = list.querySelector(`.row[data-level="${level}"]`);
+    if (row) {
+      const box = list.getBoundingClientRect(), r = row.getBoundingClientRect();
+      if (r.top < box.top || r.bottom > box.bottom) list.scrollTop += r.top - box.top - box.height / 2 + r.height / 2;
+    }
+    emit();
+  };
+  ui.setHover = function (level) {
+    if (ui.hover === level) return;
+    ui.hover = level;
+    markRows();
+    emit();
+  };
+
+  list.addEventListener('click', (event) => {
+    const row = event.target.closest('.row');
+    if (row) ui.select(Number(row.dataset.level), row.dataset.unit);
+  });
+  list.addEventListener('mouseover', (event) => {
+    const row = event.target.closest('.row');
+    ui.setHover(row ? Number(row.dataset.level) : null);
+  });
+  list.addEventListener('mouseleave', () => ui.setHover(null));
+  unitsEl.addEventListener('click', (event) => {
+    const btn = event.target.closest('.unit');
+    if (btn) ui.select(ui.selected, btn.dataset.unit);
+  });
+  document.getElementById('detail-close').addEventListener('click', () => ui.select(null));
+  document.getElementById('tour-btn').addEventListener('click', () => {
+    if (selectedUnit) select.value = selectedUnit.id;
+    document.getElementById('enquire').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  });
+  document.querySelectorAll('.chip').forEach((chip) => chip.addEventListener('click', () => {
+    bedFilter = chip.dataset.beds;
+    document.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String(c === chip)));
+    renderList();
+    emit();
+  }));
+  document.getElementById('only-available').addEventListener('change', (event) => {
+    onlyAvailable = event.target.checked;
+    renderList();
+    emit();
+  });
+  ui.floorMatches = (level) => floors.find((f) => f.level === level).units.some(matches);
+
+  /* Residence options in the form */
+  floors.slice().reverse().forEach((floor) => floor.units.forEach((unit) => {
+    if (unit.status === 'leased') return;
+    const option = document.createElement('option');
+    option.value = unit.id;
+    option.textContent = `${unit.name} ${unit.id} · ${bedLabel(unit.beds)} · ${money(unit.rent)}/mo`;
+    select.appendChild(option);
+  }));
+
+  document.getElementById('enquiry').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const form = event.target;
+    const name = form.name.value.trim();
+    const email = form.email.value.trim();
+    if (!name || !/^\S+@\S+\.\S+$/.test(email)) {
+      (name ? form.email : form.name).focus();
+      return;
+    }
+    const done = document.getElementById('form-done');
+    const pick = select.value ? ' for ' + select.options[select.selectedIndex].textContent.split(' · ')[0] : '';
+    done.textContent = `Thanks, ${name.split(' ')[0]}. Your tour request${pick} is ready. This is a concept page, so nothing was sent.`;
+    done.hidden = false;
+  });
+
+  /* Scroll position: which chapter we're in, and how far between chapters */
+  const chapters = Array.from(document.querySelectorAll('[data-shot]'));
+  const railLinks = Array.from(document.querySelectorAll('.rail a'));
+  const navLinks = Array.from(document.querySelectorAll('.nav-links a'));
+  ui.shots = chapters.map((c) => c.dataset.shot);
+  ui.progress = 0;
+  function onScroll() {
+    const mid = window.scrollY + window.innerHeight / 2;
+    const centres = chapters.map((c) => {
+      const top = c.offsetTop, h = c.offsetHeight;
+      /* For the tall availability chapter, hold the shot while its panel is pinned. */
+      return c.classList.contains('explore') ? [top + window.innerHeight * 0.5, top + h - window.innerHeight * 0.5] : [top + h / 2, top + h / 2];
+    });
+    let p = 0;
+    for (let i = 0; i < centres.length; i += 1) {
+      const [a, b] = centres[i];
+      if (mid >= a && mid <= b) { p = i; break; }
+      const next = centres[i + 1];
+      if (next && mid > b && mid < next[0]) { p = i + (mid - b) / (next[0] - b); break; }
+      if (!next && mid > b) p = i;
+    }
+    ui.progress = p;
+    const current = Math.round(p);
+    document.body.dataset.side = chapters[current].dataset.side;
+    railLinks.forEach((a, i) => a.classList.toggle('is-current', i === current));
+    navLinks.forEach((a) => a.classList.toggle('is-current', a.getAttribute('href') === '#' + chapters[current].id));
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  onScroll();
+  renderList();
+})();
+</script>
+
+<script type="module">
+/* ---------- The tower: built entirely in code with Three.js ---------- */
+let THREE, mergeGeometries, EffectComposer, RenderPass, UnrealBloomPass, OutputPass;
+
+const { floors, FIRST, LAST, TWIST_DEG } = window.CALDER;
+const ui = window.CALDER_UI;
+const FH = 0.36;                     /* storey height (1 unit = 10 m) */
+const PODIUM_TOP = 3 * FH;
+const TOWER_W = 4.4, TOWER_D = 3.2, TOWER_R = 1.0;
+const FIN_COUNT = 30;
+const levelY = (level) => PODIUM_TOP + (level - FIRST) * FH;
+const levelAngle = (level) => (level - FIRST) * TWIST_DEG * Math.PI / 180;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* Camera shots: orbit angle, elevation, distance, look-at height, and which side the copy is on */
+const SHOTS = {
+  hero:      { theta: 0.55, elev: 0.05, radius: 36, ty: 7.0, side: -1 },
+  crown:     { theta: 1.25, elev: 0.2, radius: 12, ty: 12.0, side: -1 },
+  twist:     { theta: 2.6, elev: -0.12, radius: 15, ty: 7.5, side: 1 },
+  amenities: { theta: 6.45, elev: 0.92, radius: 27, ty: 0.4, side: -1 },
+  explore:   { theta: 7.7, elev: 0.14, radius: 23, ty: 6.6, side: -1.25 },
+  enquire:   { theta: 9.0, elev: 0.3, radius: 34, ty: 5.2, side: 1 }
+};
+
+function roundedRect(w, d, r) {
+  const s = new THREE.Shape();
+  const x = -w / 2, y = -d / 2;
+  s.moveTo(x + r, y);
+  s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r);
+  s.lineTo(x + w, y + d - r); s.quadraticCurveTo(x + w, y + d, x + w - r, y + d);
+  s.lineTo(x + r, y + d); s.quadraticCurveTo(x, y + d, x, y + d - r);
+  s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
+  return s;
+}
+/* Extrude a rounded rectangle upward (extrusion runs along z, so turn it to stand on y). */
+function plate(w, d, r, h) {
+  const g = new THREE.ExtrudeGeometry(roundedRect(w, d, r), { depth: h, bevelEnabled: false, curveSegments: 10 });
+  g.rotateX(-Math.PI / 2);
+  return g;
+}
+/* Evenly spaced points round the rounded rectangle, with the outward direction at each. */
+function perimeterPoints(w, d, r, count) {
+  const pts = roundedRect(w, d, r).getSpacedPoints(count);
+  pts.pop();
+  return pts.map((p, i) => {
+    const q = pts[(i + 1) % pts.length], o = pts[(i - 1 + pts.length) % pts.length];
+    const tx = q.x - o.x, ty = q.y - o.y;
+    return { x: p.x, z: -p.y, angle: Math.atan2(ty, tx) };
+  });
+}
+
+function skyMaterial() {
+  return new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: { top: { value: new THREE.Color('#0a1222') }, mid: { value: new THREE.Color('#2a2f45') }, horizon: { value: new THREE.Color('#d48a5c') }, ground: { value: new THREE.Color('#0b0c0e') }, sunDir: { value: new THREE.Vector3(0.2, 0.02, 1).normalize() } },
+    vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+    fragmentShader: `uniform vec3 top, mid, horizon, ground, sunDir; varying vec3 vDir;
+      void main(){
+        float h = vDir.y;
+        vec3 c = h > 0. ? mix(horizon, mid, smoothstep(0., .18, h)) : mix(horizon * .55, ground, smoothstep(0., .08, -h));
+        c = h > .18 ? mix(mid, top, smoothstep(.18, .7, h)) : c;
+        float sun = max(dot(vDir, sunDir), 0.);
+        c += vec3(1., .55, .3) * pow(sun, 18.) * .55 * smoothstep(-.05, .1, h);
+        gl_FragColor = vec4(c, 1.);
+        #include <colorspace_fragment>
+      }`
+  });
+}
+
+/* Window grid for the surrounding city, used as an emissive map */
+function cityWindowsTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#000'; x.fillRect(0, 0, 256, 256);
+  let s = 77;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (let row = 0; row < 16; row += 1) for (let col = 0; col < 16; col += 1) {
+    const v = rnd();
+    if (v < 0.42) continue;
+    const warm = rnd() < 0.8;
+    const a = 0.25 + rnd() * 0.75;
+    x.fillStyle = warm ? `rgba(255,${170 + rnd() * 50 | 0},${90 + rnd() * 40 | 0},${a})` : `rgba(170,200,255,${a * .7})`;
+    x.fillRect(col * 16 + 3, row * 16 + 4, 10, 9);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+function buildCity(scene) {
+  const parts = [];
+  let s = 5;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (let i = 0; i < 70; i += 1) {
+    const a = rnd() * Math.PI * 2;
+    const dist = 17 + rnd() * 36;
+    const x = Math.cos(a) * dist, z = Math.sin(a) * dist;
+    if (z > 4) continue;                          /* keep the harbour side open */
+    const w = 1.8 + rnd() * 3, d = 1.8 + rnd() * 3, h = 1.2 + rnd() * rnd() * 7.5;
+    const g = new THREE.BoxGeometry(w, h, d);
+    const uv = g.attributes.uv;
+    /* Faces: +x, -x, +y, -y, +z, -z (4 vertices each). Scale UVs so windows stay the same size. */
+    for (let f = 0; f < 6; f += 1) for (let v = 0; v < 4; v += 1) {
+      const idx = f * 4 + v;
+      if (f === 2 || f === 3) { uv.setXY(idx, 0.01, 0.01); continue; }
+      const span = f < 2 ? d : w;
+      uv.setXY(idx, uv.getX(idx) * span / 5.8, uv.getY(idx) * h / 5.8);
+    }
+    g.translate(x, h / 2, z);
+    parts.push(g);
+  }
+  const mat = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.75, metalness: 0.2, emissive: 0xffffff, emissiveMap: cityWindowsTexture(), emissiveIntensity: 0.55 });
+  scene.add(new THREE.Mesh(mergeGeometries(parts), mat));
+}
+
+function buildGround(scene) {
+  const quay = new THREE.Mesh(new THREE.CircleGeometry(80, 64), new THREE.MeshStandardMaterial({ color: 0x101113, roughness: 0.9 }));
+  quay.rotation.x = -Math.PI / 2;
+  scene.add(quay);
+  /* Harbour water to the south */
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(200, 100), new THREE.MeshPhysicalMaterial({ color: 0x0a1418, roughness: 0.08, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.05 }));
+  water.rotation.x = -Math.PI / 2;
+  water.position.set(0, 0.01, 57);
+  scene.add(water);
+  /* Quay edge and a promenade of lamps */
+  const edge = new THREE.Mesh(new THREE.BoxGeometry(200, 0.12, 0.3), new THREE.MeshStandardMaterial({ color: 0x2a2724, roughness: 0.8 }));
+  edge.position.set(0, 0.06, 7);
+  scene.add(edge);
+  const lampGeo = new THREE.SphereGeometry(0.07, 10, 8);
+  const lampMat = new THREE.MeshBasicMaterial({ color: 0xffc98a });
+  const lamps = new THREE.InstancedMesh(lampGeo, lampMat, 40);
+  const m = new THREE.Matrix4();
+  for (let i = 0; i < 40; i += 1) { m.makeTranslation(-40 + i * 2.05, 0.55, 6.6); lamps.setMatrixAt(i, m); }
+  scene.add(lamps);
+}
+
+function buildPodium(scene) {
+  const group = new THREE.Group();
+  const stone = new THREE.MeshStandardMaterial({ color: 0xcfc6b6, roughness: 0.62 });
+  const W = 10, D = 7.2, R = 0.8;
+  /* Glass lobby band, lit warm */
+  const lobby = new THREE.Mesh(plate(W - 0.3, D - 0.3, R - 0.15, FH * 0.95), new THREE.MeshBasicMaterial({ color: 0xffb877 }));
+  group.add(lobby);
+  /* Two stone storeys with a glazed strip */
+  const s1 = new THREE.Mesh(plate(W, D, R, FH * 0.12), stone); s1.position.y = FH; group.add(s1);
+  const club = new THREE.Mesh(plate(W - 0.25, D - 0.25, R - 0.1, FH * 0.86), new THREE.MeshStandardMaterial({ color: 0x1c1a17, emissive: 0xc98a4e, emissiveIntensity: 0.55, roughness: 0.3 }));
+  club.position.y = FH * 1.12; group.add(club);
+  const s2 = new THREE.Mesh(plate(W, D, R, FH * 0.95), stone); s2.position.y = FH * 2; group.add(s2);
+  const roof = new THREE.Mesh(plate(W + 0.1, D + 0.1, R + 0.05, 0.06), new THREE.MeshStandardMaterial({ color: 0x3b3a35, roughness: 0.9 }));
+  roof.position.y = PODIUM_TOP - 0.05; group.add(roof);
+
+  /* Pool on the south side of the roof */
+  const pool = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.04, 1.3), new THREE.MeshPhysicalMaterial({ color: 0x2fb6c9, emissive: 0x0d6a7a, emissiveIntensity: 0.9, roughness: 0.05, clearcoat: 1 }));
+  pool.position.set(-1.6, PODIUM_TOP + 0.03, 2.6); group.add(pool);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.03, 2.1), new THREE.MeshStandardMaterial({ color: 0x8a7458, roughness: 0.8 }));
+  deck.position.set(-1.6, PODIUM_TOP + 0.015, 2.6); group.add(deck);
+
+  /* Planters and trees on the rest of the roof */
+  const planterMat = new THREE.MeshStandardMaterial({ color: 0x2d3b2a, roughness: 0.95 });
+  const treeMat = new THREE.MeshStandardMaterial({ color: 0x31492c, roughness: 0.9 });
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3a2b1f });
+  const spots = [[3.8, -2.6], [3.9, -0.6], [3.6, 1.6], [-4.2, -2.4], [-4.1, -0.4], [2.2, 2.9], [3.9, 2.9], [-4.3, 1.2]];
+  spots.forEach(([x, z], i) => {
+    const planter = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.12, 0.7), planterMat);
+    planter.position.set(x, PODIUM_TOP + 0.06, z); group.add(planter);
+    const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(0.32 + (i % 3) * 0.06, 1), treeMat);
+    crown.position.set(x, PODIUM_TOP + 0.55, z); crown.scale.y = 1.15; group.add(crown);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.3, 6), trunkMat);
+    trunk.position.set(x, PODIUM_TOP + 0.25, z); group.add(trunk);
+  });
+  /* Fire pits: small glowing discs */
+  [[1.8, -2.6], [-2.2, -2.5]].forEach(([x, z]) => {
+    const pit = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 0.06, 16), new THREE.MeshBasicMaterial({ color: 0xff8a3d }));
+    pit.position.set(x, PODIUM_TOP + 0.04, z); group.add(pit);
+  });
+  group.position.z = 0.4;
+  scene.add(group);
+}
+
+function buildTower(scene, envMap) {
+  const count = LAST - FIRST + 1;
+  const tower = new THREE.Group();
+  const dummy = new THREE.Object3D();
+
+  /* Floor slabs with a slight balcony overhang */
+  const slabGeo = plate(TOWER_W * 1.07, TOWER_D * 1.1, TOWER_R * 1.05, 0.055);
+  const slabs = new THREE.InstancedMesh(slabGeo, new THREE.MeshStandardMaterial({ color: 0xe7e0d3, roughness: 0.55 }), count);
+
+  /* Lit interiors: unlit colours so they glow, coloured per floor */
+  const roomGeo = plate(TOWER_W * 0.9, TOWER_D * 0.88, TOWER_R * 0.85, FH - 0.07);
+  const rooms = new THREE.InstancedMesh(roomGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), count);
+
+  /* Curtain wall: transmissive glass around each floor */
+  const glassGeo = plate(TOWER_W * 0.985, TOWER_D * 0.985, TOWER_R * 0.97, FH - 0.055);
+  const glassMat = new THREE.MeshPhysicalMaterial({
+    color: 0xb9c6cc, roughness: 0.04, metalness: 0, transmission: 0.82, thickness: 0.12, ior: 1.5,
+    clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.3, transparent: false
+  });
+  const glass = new THREE.InstancedMesh(glassGeo, glassMat, count);
+
+  /* Bronze fins round every floor */
+  const finGeo = new THREE.BoxGeometry(0.035, FH - 0.055, 0.16);
+  const finMat = new THREE.MeshStandardMaterial({ color: 0x5b4632, metalness: 0.85, roughness: 0.35 });
+  const perimeter = perimeterPoints(TOWER_W * 1.0, TOWER_D * 1.0, TOWER_R, FIN_COUNT);
+  const fins = new THREE.InstancedMesh(finGeo, finMat, count * FIN_COUNT);
+
+  const baseColours = [];
+  let s = 31;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (let i = 0; i < count; i += 1) {
+    const level = FIRST + i;
+    const y = levelY(level), a = levelAngle(level);
+    dummy.position.set(0, y, 0); dummy.rotation.set(0, a, 0); dummy.updateMatrix();
+    slabs.setMatrixAt(i, dummy.matrix);
+    dummy.position.y = y + 0.055; dummy.updateMatrix();
+    glass.setMatrixAt(i, dummy.matrix);
+    dummy.position.y = y + 0.06; dummy.updateMatrix();
+    rooms.setMatrixAt(i, dummy.matrix);
+    perimeter.forEach((p, j) => {
+      const cos = Math.cos(a), sin = Math.sin(a);
+      dummy.position.set(p.x * cos + p.z * sin, y + 0.055 + (FH - 0.055) / 2, -p.x * sin + p.z * cos);
+      dummy.rotation.set(0, a - p.angle, 0);
+      dummy.updateMatrix();
+      fins.setMatrixAt(i * FIN_COUNT + j, dummy.matrix);
+    });
+    const lit = rnd();
+    const warm = new THREE.Color().setHSL(0.07 + rnd() * 0.03, 0.7, lit < 0.18 ? 0.06 : 0.17 + rnd() * 0.16);
+    baseColours.push(warm);
+    rooms.setColorAt(i, warm);
+  }
+  tower.add(slabs, rooms, glass, fins);
+
+  /* Crown: a taller ring of fins with a glowing band */
+  const topY = levelY(LAST) + FH;
+  const crownAngle = levelAngle(LAST + 1);
+  const crown = new THREE.Group();
+  crown.position.y = topY; crown.rotation.y = crownAngle;
+  const crownFinGeo = new THREE.BoxGeometry(0.04, 1.3, 0.22);
+  const crownPerim = perimeterPoints(TOWER_W * 0.98, TOWER_D * 0.98, TOWER_R, 44);
+  const crownFins = new THREE.InstancedMesh(crownFinGeo, finMat, crownPerim.length);
+  crownPerim.forEach((p, j) => { dummy.position.set(p.x, 0.65, p.z); dummy.rotation.set(0, -p.angle, 0); dummy.updateMatrix(); crownFins.setMatrixAt(j, dummy.matrix); });
+  crown.add(crownFins);
+  const glow = new THREE.Mesh(plate(TOWER_W * 0.9, TOWER_D * 0.88, TOWER_R * 0.85, 1.1), new THREE.MeshBasicMaterial({ color: 0xffc27a }));
+  glow.position.y = 0.05; crown.add(glow);
+  const cap = new THREE.Mesh(plate(TOWER_W * 1.02, TOWER_D * 1.02, TOWER_R, 0.06), new THREE.MeshStandardMaterial({ color: 0x2b2420, metalness: 0.6, roughness: 0.4 }));
+  cap.position.y = 1.3; crown.add(cap);
+  const roofSlab = new THREE.Mesh(slabGeo, slabs.material);
+  crown.add(roofSlab);
+  tower.add(crown);
+
+  /* Selection and hover outlines */
+  const outlineShape = roundedRect(TOWER_W * 1.12, TOWER_D * 1.15, TOWER_R * 1.1);
+  const ringPts = outlineShape.getSpacedPoints(120).map((p) => new THREE.Vector3(p.x, 0, -p.y));
+  const ringGeo = new THREE.BufferGeometry().setFromPoints(ringPts);
+  const makeRing = (colour, opacity) => {
+    const g = new THREE.Group();
+    const m = new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity });
+    const a = new THREE.Line(ringGeo, m), b = new THREE.Line(ringGeo, m);
+    b.position.y = FH;
+    g.add(a, b);
+    g.visible = false;
+    return g;
+  };
+  const selectRing = makeRing(0xffd89a, 1);
+  const hoverRing = makeRing(0xece7dc, 0.55);
+  tower.add(selectRing, hoverRing);
+
+  scene.add(tower);
+  return { tower, rooms, glass, baseColours, selectRing, hoverRing, count };
+}
+
+function start(canvas) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x1a1a22, 40, 110);
+
+  /* Dusk sky, also used to make the reflections on the glass */
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(150, 48, 24), skyMaterial());
+  scene.add(sky);
+  const envScene = new THREE.Scene();
+  envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), skyMaterial()));
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.2), new THREE.MeshBasicMaterial({ color: 0xffd2a8, side: THREE.DoubleSide }));
+  panel.position.set(0, 1.5, 9); panel.lookAt(0, 0, 0); envScene.add(panel);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envMap = pmrem.fromScene(envScene, 0.02).texture;
+  pmrem.dispose();
+  scene.environment = envMap;
+  scene.environmentIntensity = 0.9;
+
+  scene.add(new THREE.HemisphereLight(0x8d9bc4, 0x1a1410, 0.6));
+  const sun = new THREE.DirectionalLight(0xffb27a, 1.6);
+  sun.position.set(8, 6, 30);
+  scene.add(sun);
+
+  buildGround(scene);
+  buildCity(scene);
+  buildPodium(scene);
+  const T = buildTower(scene, envMap);
+
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 400);
+
+  /* Bloom makes the lit windows and crown glow */
+  let composer = null;
+  try {
+    composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 0.55, 0.6, 0.82));
+    composer.addPass(new OutputPass());
+  } catch (e) { composer = null; }
+
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h); }
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  /* ---- Camera state ---- */
+  const shotList = ui.shots.map((name) => SHOTS[name]);
+  const cam = { ...shotList[0] };
+  let dragTheta = 0, dragVel = 0, idle = 0;
+  const exploreIndex = ui.shots.indexOf('explore');
+  const ease = (t) => t * t * (3 - 2 * t);
+  const isMobile = () => window.innerWidth < 860;
+
+  function targetShot() {
+    const p = Math.max(0, Math.min(shotList.length - 1, ui.progress));
+    const i = Math.min(Math.floor(p), shotList.length - 2), f = ease(p - i);
+    const a = shotList[i], b = shotList[i + 1];
+    const out = {};
+    for (const k of ['theta', 'elev', 'radius', 'ty', 'side']) out[k] = a[k] + (b[k] - a[k]) * f;
+    /* Inside the availability chapter, a chosen floor pulls the camera in */
+    const weight = Math.max(0, 1 - Math.abs(ui.progress - exploreIndex) * 1.6);
+    if (weight > 0) {
+      out.theta += dragTheta * weight;
+      if (ui.selected != null) {
+        const y = levelY(ui.selected) + FH / 2;
+        out.ty += (y - out.ty) * weight;
+        out.radius += (14 - out.radius) * weight;
+        out.elev += (0.08 - out.elev) * weight;
+      }
+    }
+    if (isMobile()) { out.side = 0; out.radius *= 1.35; out.ty -= 1.2; }
+    return { shot: out, explore: weight > 0.5 };
+  }
+
+  /* ---- Picking floors ---- */
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const tip = document.getElementById('floor-tip');
+  let exploreActive = false, dragging = false, moved = 0, lastX = 0, lastT = 0, pointerIn = false, lastEvent = null;
+
+  function pick(event) {
+    pointer.set((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1);
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects([T.glass, T.rooms], false);
+    return hits.length ? FIRST + hits[0].instanceId : null;
+  }
+  function showTip(level, event) {
+    if (level == null) { tip.classList.remove('is-on'); return; }
+    const floor = floors.find((f) => f.level === level);
+    const avail = floor.units.filter((u) => u.status === 'available').length;
+    tip.innerHTML = `<strong>${level}</strong>${avail ? avail + ' available' : 'No availability'}`;
+    tip.style.left = event.clientX + 'px';
+    tip.style.top = event.clientY + 'px';
+    tip.classList.add('is-on');
+  }
+
+  canvas.addEventListener('pointerdown', (event) => {
+    if (!exploreActive) return;
+    dragging = true; moved = 0; lastX = event.clientX; lastT = event.timeStamp; dragVel = 0;
+    canvas.setPointerCapture(event.pointerId);
+    canvas.classList.add('is-dragging');
+  });
+  canvas.addEventListener('pointermove', (event) => {
+    pointerIn = true; lastEvent = event;
+    if (dragging) {
+      const dx = event.clientX - lastX;
+      moved += Math.abs(dx);
+      dragTheta -= dx * 0.008;
+      dragVel = -dx * 0.008 / Math.max((event.timeStamp - lastT) / 1000, 0.001);
+      lastX = event.clientX; lastT = event.timeStamp;
+      showTip(null);
+      return;
+    }
+    if (!exploreActive) { showTip(null); return; }
+    const level = pick(event);
+    ui.setHover(level);
+    canvas.classList.toggle('on-floor', level != null);
+    showTip(level, event);
+  });
+  const endDrag = (event) => {
+    if (!dragging) return;
+    dragging = false;
+    canvas.classList.remove('is-dragging');
+    if (moved < 6) {
+      const level = pick(event);
+      if (level != null) ui.select(level);
+    }
+  };
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', () => { dragging = false; canvas.classList.remove('is-dragging'); });
+  canvas.addEventListener('pointerleave', () => { pointerIn = false; ui.setHover(null); showTip(null); });
+
+  /* ---- Floor colours: warm by default; by status in the availability view ---- */
+  const C = { available: new THREE.Color('#e8b86e'), reserved: new THREE.Color('#3d4650'), leased: new THREE.Color('#14171a'), selected: new THREE.Color('#fff1cf'), dim: new THREE.Color('#0c0e10') };
+  const tmp = new THREE.Color();
+  let statusMix = 0;
+  function paintFloors(dt) {
+    statusMix += ((exploreActive ? 1 : 0) - statusMix) * (1 - Math.exp(-dt * 4));
+    for (let i = 0; i < T.count; i += 1) {
+      const level = FIRST + i;
+      const floor = floors[i];
+      let status;
+      if (level === ui.selected) status = C.selected;
+      else if (!ui.floorMatches(level)) status = C.dim;
+      else if (floor.units.some((u) => u.status === 'available')) status = C.available;
+      else if (floor.units.some((u) => u.status === 'reserved')) status = C.reserved;
+      else status = C.leased;
+      tmp.copy(T.baseColours[i]).lerp(status, statusMix);
+      if (level === ui.hover && level !== ui.selected) tmp.lerp(C.selected, 0.35);
+      T.rooms.setColorAt(i, tmp);
+    }
+    T.rooms.instanceColor.needsUpdate = true;
+    const place = (ring, level) => {
+      ring.visible = level != null && statusMix > 0.3;
+      if (ring.visible) { ring.position.y = levelY(level) + 0.03; ring.rotation.y = levelAngle(level); }
+    };
+    place(T.selectRing, ui.selected);
+    place(T.hoverRing, ui.hover !== ui.selected ? ui.hover : null);
+  }
+
+  /* ---- Loop ---- */
+  const lookAt = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  let last = performance.now(), visible = true;
+  document.addEventListener('visibilitychange', () => { visible = !document.hidden; if (visible) { last = performance.now(); requestAnimationFrame(frame); } });
+
+  function frame(now) {
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+    const { shot, explore } = targetShot();
+    if (exploreActive && !explore) { ui.setHover(null); showTip(null); }
+    exploreActive = explore;
+    canvas.classList.toggle('can-explore', explore);
+    if (!explore) canvas.classList.remove('on-floor');
+
+    if (!dragging && Math.abs(dragVel) > 0.001) { dragTheta += dragVel * dt; dragVel *= Math.exp(-dt * 3); }
+    if (!reduced && !explore) idle += dt * 0.025;
+
+    const k = reduced ? 1 : 1 - Math.exp(-dt * 3.2);
+    for (const key of ['theta', 'elev', 'radius', 'ty', 'side']) cam[key] += (shot[key] - cam[key]) * k;
+
+    const theta = cam.theta + idle;
+    const cosE = Math.cos(cam.elev);
+    camera.position.set(Math.sin(theta) * cosE * cam.radius, cam.ty + Math.sin(cam.elev) * cam.radius, Math.cos(theta) * cosE * cam.radius);
+    camera.position.y = Math.max(camera.position.y, 0.4);
+    /* Shift the view sideways so the tower sits beside the copy, not under it */
+    right.set(Math.cos(theta), 0, -Math.sin(theta));
+    lookAt.set(0, cam.ty, 0).addScaledVector(right, cam.side * cam.radius * 0.16);
+    camera.position.addScaledVector(right, cam.side * cam.radius * 0.16);
+    camera.lookAt(lookAt);
+
+    paintFloors(dt);
+    if (composer) composer.render(); else renderer.render(scene, camera);
+    if (visible) requestAnimationFrame(frame);
+  }
+  ui.listeners.push(() => { if (lastEvent && pointerIn && exploreActive) showTip(ui.hover, lastEvent); });
+  requestAnimationFrame(frame);
+  window.__calderReady = true;
+}
+
+const canvas = document.getElementById('scene');
+try {
+  THREE = await import('three');
+  ({ mergeGeometries } = await import('three/addons/utils/BufferGeometryUtils.js'));
+  try {
+    ({ EffectComposer } = await import('three/addons/postprocessing/EffectComposer.js'));
+    ({ RenderPass } = await import('three/addons/postprocessing/RenderPass.js'));
+    ({ UnrealBloomPass } = await import('three/addons/postprocessing/UnrealBloomPass.js'));
+    ({ OutputPass } = await import('three/addons/postprocessing/OutputPass.js'));
+  } catch (e) { EffectComposer = null; }
+  if (!EffectComposer) throw new Error('postprocessing unavailable');
+  start(canvas);
+} catch (error) {
+  if (THREE && mergeGeometries && !window.__calderReady) {
+    try { EffectComposer = function () { throw new Error('no bloom'); }; start(canvas); }
+    catch (e2) { console.error('Could not start the 3D tower:', e2); canvas.hidden = true; document.getElementById('scene-fallback').hidden = false; }
+  } else if (!window.__calderReady) {
+    console.error('Could not start the 3D tower:', error);
+    canvas.hidden = true;
+    document.getElementById('scene-fallback').hidden = false;
+  }
+}
+</script>
+
+<script>
+(function() {
+ 'use strict';
+ function U() {
+  return String.fromCharCode.apply(null, arguments);
+ }
+ var CHARSETS = {
+  standard: ' .:-=+*#%@',
+  blocks: ' .:' + U(9617, 9618, 9619, 9608) + '',
+  dots: ' .' + U(183) + ':' + U(8226) + '',
+  binary: ' 01',
+  donut: ' .,-~:;=!*#$@',
+  photo: " .'" + '`^",:;Il!i><~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$',
+  bars: ' ' + U(9601, 9602, 9603, 9604, 9605, 9606, 9607, 9608) + '',
+  shade: ' ' + U(9617, 9618, 9619, 9608) + '',
+  braille: ' ' + U(10241, 10243, 10247, 10311, 10319, 10335, 10367, 10495) + '',
+  stars: ' .' + U(183) + '*' + U(10022, 9733) + '',
+  circles: ' .' + U(183, 8728, 9675, 9679) + ''
+ };
+ var MATRIX_GLYPHS = '' + U(65393, 65394, 65395, 65396, 65397, 65398, 65399, 65400, 65401, 65402, 65403, 65404, 65405, 65406, 65407, 65408, 65409, 65410, 65411, 65412, 65413, 65414, 65415, 65416, 65417, 65418, 65419, 65420, 65421, 65422) + '0123456789<>=*+-/' + U(92) + '|:;ABCDEFGHKLMNPRSTUXYZ';
+ var COLOURS = {
+  phosphor: {
+   bg: '#05080a',
+   ink: [ 57, 255, 122 ]
+  },
+  amber: {
+   bg: '#0a0600',
+   ink: [ 255, 176, 38 ]
+  },
+  paper: {
+   bg: '#e4e6e0',
+   ink: [ 18, 40, 24 ],
+   paper: true
+  },
+  spectrum: {
+   bg: '#05060a',
+   stops: [ [ 60, 8, 90 ], [ 40, 60, 220 ], [ 20, 210, 200 ], [ 120, 230, 40 ], [ 255, 210, 20 ], [ 255, 70, 40 ] ]
+  },
+  fire: {
+   bg: '#05030a',
+   stops: [ [ 6, 2, 8 ], [ 120, 12, 6 ], [ 210, 40, 6 ], [ 255, 120, 16 ], [ 255, 210, 70 ], [ 255, 255, 235 ] ]
+  },
+  ice: {
+   bg: '#03060c',
+   stops: [ [ 2, 4, 12 ], [ 10, 30, 90 ], [ 20, 90, 200 ], [ 40, 170, 235 ], [ 150, 225, 250 ], [ 245, 252, 255 ] ]
+  },
+  neon: {
+   bg: '#06030a',
+   stops: [ [ 10, 4, 14 ], [ 210, 30, 190 ], [ 150, 30, 210 ], [ 40, 140, 235 ], [ 40, 232, 228 ], [ 156, 247, 46 ] ]
+  }
+ };
+ var LOOKS = {
+  Neo: {
+   e: 'matrix',
+   k: 'phosphor',
+   sp: 120,
+   ce: 12
+  },
+  Solaris: {
+   e: 'donut',
+   c: 'donut',
+   k: 'amber',
+   sp: 90,
+   ce: 11
+  },
+  Blueprint: {
+   e: 'plasma',
+   c: 'blocks',
+   k: 'paper',
+   sp: 80,
+   ce: 12
+  },
+  Mono: {
+   e: 'donut',
+   c: 'standard',
+   k: 'paper',
+   sp: 70,
+   ce: 10
+  },
+  Signal: {
+   e: 'plasma',
+   c: 'binary',
+   k: 'phosphor',
+   sp: 140,
+   ce: 10
+  },
+  Ember: {
+   e: 'matrix',
+   c: 'standard',
+   k: 'amber',
+   sp: 100,
+   ce: 12
+  },
+  Inferno: {
+   c: 'standard',
+   k: 'fire',
+   sp: 160,
+   ce: 11
+  },
+  Drift: {
+   c: 'standard',
+   k: 'spectrum',
+   sp: 55,
+   ce: 10
+  },
+  Aurora: {
+   c: 'blocks',
+   k: 'ice',
+   sp: 80,
+   ce: 12
+  },
+  Voltage: {
+   c: 'photo',
+   k: 'neon',
+   sp: 170,
+   ce: 10
+  },
+  Noir: {
+   c: 'standard',
+   k: 'paper',
+   sp: 50,
+   ce: 11
+  }
+ };
+ function clamp01(v) {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+ }
+ function gradient(stops, l) {
+  var n = stops.length - 1, x = clamp01(l) * n, i = Math.min(n - 1, Math.floor(x)), f = x - i;
+  var a = stops[i], b = stops[i + 1];
+  return [ Math.round(a[0] + (b[0] - a[0]) * f), Math.round(a[1] + (b[1] - a[1]) * f), Math.round(a[2] + (b[2] - a[2]) * f) ];
+ }
+ function glyph(ramp, l) {
+  var idx = Math.round(clamp01(l) * (ramp.length - 1));
+  return ramp.charAt(idx);
+ }
+ var ENGINES = {
+  plasma: function(st, t) {
+   for (var y = 0; y < st.rows; y++) for (var x = 0; x < st.cols; x++) {
+    var u = x / st.cols * 6, v = y / st.rows * 6;
+    var s = Math.sin(u + t) + Math.sin(v * 1.3 - t * .8) + Math.sin((u + v) * .7 + t * .6) + Math.sin(Math.sqrt((u - 3) * (u - 3) + (v - 3) * (v - 3)) * 1.5 - t);
+    st.lum[y * st.cols + x] = (s + 4) / 8;
+   }
+  },
+  donut: function(st, t) {
+   var cols = st.cols, rows = st.rows, lum = st.lum, z = st.zbuf;
+   lum.fill(0);
+   z.fill(0);
+   var A = t * .8, B = t * .4, cA = Math.cos(A), sA = Math.sin(A), cB = Math.cos(B), sB = Math.sin(B);
+   var K1 = Math.min(cols, rows * 2) * .35 * 5 / 3;
+   for (var th = 0; th < 6.283; th += .07) {
+    var ct = Math.cos(th), stt = Math.sin(th);
+    for (var ph = 0; ph < 6.283; ph += .02) {
+     var cp = Math.cos(ph), sp = Math.sin(ph);
+     var cx = 2 + ct, cy = stt;
+     var x = cx * (cB * cp + sA * sB * sp) - cy * cA * sB;
+     var y = cx * (sB * cp - sA * cB * sp) + cy * cA * cB;
+     var zz = 5 + cA * cx * sp + cy * sA, ooz = 1 / zz;
+     var xp = Math.floor(cols / 2 + K1 * ooz * x);
+     var yp = Math.floor(rows / 2 - K1 * ooz * y * .5);
+     if (xp < 0 || xp >= cols || yp < 0 || yp >= rows) continue;
+     var L = cp * ct * sB - cA * ct * sp - sA * stt + cB * (cA * stt - ct * sA * sp);
+     var i = yp * cols + xp;
+     if (ooz > z[i]) {
+      z[i] = ooz;
+      lum[i] = L > 0 ? Math.min(1, .15 + L / 1.5) : .08;
+     }
+    }
+   }
+  },
+  matrix: function(st, t, dt) {
+   var cols = st.cols, rows = st.rows;
+   if (!st.drops || st.drops.length !== cols) {
+    st.drops = [];
+    for (var c = 0; c < cols; c++) st.drops.push(Math.random() * rows);
+    st.trail = new Float32Array(cols * rows);
+    st.chars = [];
+    for (var k = 0; k < cols * rows; k++) st.chars.push(MATRIX_GLYPHS.charAt(Math.random() * MATRIX_GLYPHS.length | 0));
+   }
+   for (var j = 0; j < st.trail.length; j++) st.trail[j] *= Math.pow(.88, dt * 60);
+   for (var x = 0; x < cols; x++) {
+    st.drops[x] += dt * 18 * (.6 + x * 7919 % 10 / 20);
+    if (st.drops[x] > rows + 10) st.drops[x] = -Math.random() * 20;
+    var yy = Math.floor(st.drops[x]);
+    if (yy >= 0 && yy < rows) {
+     st.trail[yy * cols + x] = 1;
+     if (Math.random() < .3) st.chars[yy * cols + x] = MATRIX_GLYPHS.charAt(Math.random() * MATRIX_GLYPHS.length | 0);
+    }
+   }
+   st.lum.set(st.trail);
+  },
+  fire: function(st, t, dt) {
+   var cols = st.cols, rows = st.rows;
+   if (!st.heat || st.heat.length !== cols * rows) st.heat = new Float32Array(cols * rows);
+   var h = st.heat;
+   for (var x = 0; x < cols; x++) h[(rows - 1) * cols + x] = .7 + Math.random() * .3;
+   for (var y = 0; y < rows - 1; y++) for (var x2 = 0; x2 < cols; x2++) {
+    var src = Math.min(cols - 1, Math.max(0, x2 + (Math.random() * 3 | 0) - 1));
+    var v = h[(y + 1) * cols + src] - Math.random() * (1.8 / rows);
+    h[y * cols + x2] = v < 0 ? 0 : v;
+   }
+   st.lum.set(h);
+  },
+  image: function(st) {
+   if (!st.imgData) {
+    st.lum.fill(0);
+    return;
+   }
+   st.lum.set(st.imgData);
+  }
+ };
+ function AsciiFX(canvas, opts) {
+  opts = opts || {};
+  var d = canvas.dataset;
+  var look = LOOKS[opts.look || d.look] || {};
+  this.canvas = canvas;
+  this.ctx = canvas.getContext('2d');
+  this.engine = opts.engine || d.engine || look.e || (d.image || opts.image ? 'image' : 'plasma');
+  this.charset = opts.charset || d.charset || look.c || 'standard';
+  this.colour = opts.colour || d.colour || look.k || 'phosphor';
+  this.speed = +(opts.speed || d.speed || look.sp || 100);
+  this.cell = +(opts.cell || d.cell || look.ce || 12);
+  this.contrast = +(opts.contrast || d.contrast || 100);
+  this.transparent = (opts.bg || d.bg) === 'none';
+  this.st = {};
+  this.t = 0;
+  this.reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var self = this, img = opts.image || d.image;
+  if (img) this.loadImage(img);
+  this.resize();
+  if (typeof ResizeObserver === 'function') new ResizeObserver(function() {
+   self.resize();
+  }).observe(canvas);
+  this.last = 0;
+  this.frame = function(now) {
+   var dt = self.last ? Math.min(.1, (now - self.last) / 1e3) : 1 / 60;
+   self.last = now;
+   if (!self.reduced) self.t += dt * self.speed / 100;
+   self.render(dt);
+   if (!self.reduced) self.raf = requestAnimationFrame(self.frame);
+  };
+  this.raf = requestAnimationFrame(this.frame);
+ }
+ AsciiFX.prototype.resize = function() {
+  var r = this.canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  this.w = Math.max(1, r.width);
+  this.h = Math.max(1, r.height);
+  this.canvas.width = Math.round(this.w * dpr);
+  this.canvas.height = Math.round(this.h * dpr);
+  this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  var st = this.st;
+  st.cw = this.cell * .6;
+  st.ch = this.cell;
+  st.cols = Math.max(1, Math.floor(this.w / st.cw));
+  st.rows = Math.max(1, Math.floor(this.h / st.ch));
+  st.lum = new Float32Array(st.cols * st.rows);
+  st.zbuf = new Float32Array(st.cols * st.rows);
+  st.drops = null;
+  st.heat = null;
+  if (this.img) this.sampleImage();
+  if (this.reduced) this.render(0);
+ };
+ AsciiFX.prototype.loadImage = function(src) {
+  var self = this, im = new Image;
+  im.crossOrigin = 'anonymous';
+  im.onload = function() {
+   self.img = im;
+   self.sampleImage();
+   if (self.reduced) self.render(0);
+  };
+  im.src = src;
+ };
+ AsciiFX.prototype.sampleImage = function() {
+  var st = this.st, c = document.createElement('canvas');
+  c.width = st.cols;
+  c.height = st.rows;
+  var x = c.getContext('2d'), im = this.img;
+  var s = Math.max(this.w / im.width, this.h / im.height);
+  var w = im.width * s / st.cw, h = im.height * s / st.ch;
+  x.drawImage(im, (st.cols - w) / 2, (st.rows - h) / 2, w, h);
+  var px = x.getImageData(0, 0, st.cols, st.rows).data, out = new Float32Array(st.cols * st.rows);
+  for (var i = 0; i < out.length; i++) out[i] = (.2126 * px[i * 4] + .7152 * px[i * 4 + 1] + .0722 * px[i * 4 + 2]) / 255;
+  st.imgData = out;
+ };
+ AsciiFX.prototype.render = function(dt) {
+  var st = this.st, ctx = this.ctx, pal = COLOURS[this.colour] || COLOURS.phosphor;
+  var ramp = CHARSETS[this.charset] || CHARSETS.standard, gamma = 100 / this.contrast;
+  (ENGINES[this.engine] || ENGINES.plasma)(st, this.t, dt || 1 / 60);
+  if (this.transparent) ctx.clearRect(0, 0, this.w, this.h); else {
+   ctx.fillStyle = pal.bg;
+   ctx.fillRect(0, 0, this.w, this.h);
+  }
+  ctx.font = st.ch + 'px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  ctx.textBaseline = 'top';
+  var isMatrix = this.engine === 'matrix', lastCol = '';
+  for (var y = 0; y < st.rows; y++) for (var x = 0; x < st.cols; x++) {
+   var i = y * st.cols + x, l = Math.pow(clamp01(st.lum[i]), gamma);
+   if (pal.paper && this.engine === 'image') l = 1 - l;
+   if (l < .02) continue;
+   var ch = isMatrix ? st.chars[i] : glyph(ramp, l);
+   if (ch === ' ') continue;
+   var rgb = pal.stops ? gradient(pal.stops, l) : pal.ink;
+   var a = pal.stops ? 1 : .25 + .75 * l;
+   var col = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + a.toFixed(2) + ')';
+   if (col !== lastCol) {
+    ctx.fillStyle = col;
+    lastCol = col;
+   }
+   ctx.fillText(ch, x * st.cw, y * st.ch);
+  }
+ };
+ AsciiFX.prototype.set = function(opts) {
+  var look = LOOKS[opts.look] || {};
+  if (look.e || opts.engine) this.engine = opts.engine || look.e;
+  if (look.c || opts.charset) this.charset = opts.charset || look.c;
+  if (look.k || opts.colour) this.colour = opts.colour || look.k;
+  if (look.sp || opts.speed) this.speed = +(opts.speed || look.sp);
+  if (look.ce || opts.cell) {
+   this.cell = +(opts.cell || look.ce);
+   this.resize();
+  }
+  if (opts.contrast) this.contrast = +opts.contrast;
+  if (this.reduced) this.render(0);
+ };
+ AsciiFX.prototype.destroy = function() {
+  cancelAnimationFrame(this.raf);
+ };
+ AsciiFX.CHARSETS = CHARSETS;
+ AsciiFX.COLOURS = COLOURS;
+ AsciiFX.LOOKS = LOOKS;
+ AsciiFX._gradient = gradient;
+ AsciiFX._glyph = glyph;
+ AsciiFX._ENGINES = ENGINES;
+ if (typeof window !== 'undefined') {
+  window.AsciiFX = AsciiFX;
+  var boot = function() {
+   var els = document.querySelectorAll('canvas.ascii-fx');
+   for (var i = 0; i < els.length; i++) if (!els[i]._asciiFx) els[i]._asciiFx = new AsciiFX(els[i]);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+ }
+ if (typeof module !== 'undefined') module.exports = AsciiFX;
+})();
+</script>
+<script>
+(function() {
+ 'use strict';
+ var BASE = {
+  speed: 1,
+  radius: .72,
+  zoom: .3,
+  warp: 3,
+  ridgeAmt: .5,
+  sharp: 2.2,
+  shade: .3,
+  sheen: .36,
+  gloss: .28,
+  glassOpacity: .42,
+  exposure: 1,
+  style: 0
+ };
+ function P(o) {
+  var r = {}, k;
+  for (k in BASE) r[k] = BASE[k];
+  for (k in o) r[k] = o[k];
+  return r;
+ }
+ var ORBS = {
+  siri: P({
+   name: 'Siri Wave',
+   speed: .82,
+   zoom: .36,
+   warp: 3.2,
+   ridgeAmt: .5,
+   sharp: 2.2,
+   shade: .12,
+   sheen: .28,
+   gloss: .24,
+   glassOpacity: .44,
+   exposure: 2,
+   colors: [ '#FFD86B', '#82F4FF', '#FF7BD5', '#8E6CFF' ],
+   shellMid: '#9BF4FF',
+   shellEdge: '#C5A9FF',
+   canvas: '#030409',
+   glow: '#956CFF'
+  }),
+  voiceWave: P({
+   name: 'Voice Membrane',
+   speed: .95,
+   radius: .7,
+   zoom: .36,
+   warp: 2.6,
+   ridgeAmt: .46,
+   shade: .08,
+   sheen: .22,
+   gloss: .36,
+   glassOpacity: .48,
+   exposure: 1.35,
+   colors: [ '#09030E', '#CE2CCB', '#FF5C71', '#7B53FF' ],
+   shellMid: '#E48BFF',
+   shellEdge: '#FF7890',
+   canvas: '#020105',
+   glow: '#CE2CCB'
+  }),
+  particleRibbon: P({
+   name: 'Particle Ribbons',
+   style: 1,
+   speed: .72,
+   radius: .66,
+   shade: .12,
+   sheen: .28,
+   gloss: .24,
+   glassOpacity: .44,
+   exposure: 1.48,
+   colors: [ '#63F1FF', '#4A9DFF', '#8566FF', '#F15DE1' ],
+   shellMid: '#9BF4FF',
+   shellEdge: '#C5A9FF',
+   canvas: '#010208',
+   glow: '#765CFF'
+  }),
+  blueDrop: P({
+   name: 'Crystal Drop',
+   speed: .9,
+   radius: .74,
+   zoom: .48,
+   warp: 2.65,
+   ridgeAmt: .42,
+   sharp: 2.4,
+   shade: .16,
+   sheen: .22,
+   gloss: .42,
+   glassOpacity: .66,
+   exposure: 1.24,
+   colors: [ '#020B1D', '#0756B8', '#1EC8FF', '#DDFBFF' ],
+   shellMid: '#4FD7FF',
+   shellEdge: '#466DFF',
+   canvas: '#010207',
+   glow: '#168DFF'
+  }),
+  violetEmber: P({
+   name: 'Violet Ember',
+   speed: 1.12,
+   radius: .72,
+   zoom: .58,
+   warp: 4.7,
+   ridgeAmt: .73,
+   sharp: 3.3,
+   shade: .18,
+   sheen: .2,
+   gloss: .34,
+   glassOpacity: .62,
+   exposure: 1.28,
+   colors: [ '#100016', '#4A0E8F', '#A52EFF', '#F1A7FF' ],
+   shellMid: '#C257FF',
+   shellEdge: '#6C2DFF',
+   canvas: '#030006',
+   glow: '#A52EFF'
+  }),
+  refractiveBlob: P({
+   name: 'Refractive Gel',
+   speed: .76,
+   radius: .73,
+   zoom: .46,
+   warp: 3.65,
+   ridgeAmt: .58,
+   sharp: 2.7,
+   shade: .14,
+   sheen: .14,
+   gloss: .52,
+   glassOpacity: .82,
+   exposure: 1.2,
+   colors: [ '#1B102B', '#7056A8', '#BFA5F5', '#F1E8FF' ],
+   shellMid: '#D9C7FF',
+   shellEdge: '#B59AE8',
+   canvas: '#050208',
+   glow: '#B18CFF'
+  }),
+  chromaticMetal: P({
+   name: 'Chromatic Metal',
+   style: 2,
+   speed: 1.12,
+   radius: .72,
+   shade: .1,
+   sheen: .14,
+   gloss: .46,
+   glassOpacity: .54,
+   exposure: 1.08,
+   colors: [ '#FBFCFB', '#7F8683', '#D6DAD8', '#33373A' ],
+   shellMid: '#6EDCFF',
+   shellEdge: '#FF806D',
+   canvas: '#050606',
+   glow: '#BDEFFF'
+  }),
+  aurora: P({
+   name: 'Aurora Veil',
+   speed: 3,
+   zoom: .4,
+   warp: 4.2,
+   ridgeAmt: .62,
+   sharp: 2.1,
+   shade: .18,
+   exposure: 1.18,
+   colors: [ '#030816', '#20F0B6', '#32A8FF', '#A34BFF' ],
+   shellMid: '#32A8FF',
+   shellEdge: '#20F0B6',
+   canvas: '#010207',
+   glow: '#20F0B6'
+  }),
+  frost: P({
+   name: 'Frost Flow',
+   speed: 2.22,
+   zoom: .36,
+   warp: 3.7,
+   ridgeAmt: .45,
+   sharp: 2.05,
+   shade: .3,
+   sheen: .34,
+   gloss: .28,
+   glassOpacity: .42,
+   exposure: 1,
+   colors: [ '#F7FBFF', '#D6E8F7', '#A8C8F0', '#6F9EE8' ],
+   shellMid: '#D6E8F7',
+   shellEdge: '#6F9EE8',
+   canvas: '#000000',
+   glow: '#6F9EE8'
+  }),
+  chrome: P({
+   name: 'Liquid Chrome',
+   speed: 2,
+   zoom: .36,
+   warp: 3.8,
+   ridgeAmt: .44,
+   sharp: 5.2,
+   shade: .58,
+   exposure: 1.08,
+   colors: [ '#FFFFFF', '#B9C0CA', '#343A43', '#030405' ],
+   shellMid: '#B9C0CA',
+   shellEdge: '#FFFFFF',
+   canvas: '#050608',
+   glow: '#FFFFFF'
+  }),
+  opal: P({
+   name: 'Iridescent Opal',
+   speed: 1.5,
+   zoom: .3,
+   warp: 2.8,
+   ridgeAmt: .36,
+   sharp: 2,
+   shade: .1,
+   sheen: .3,
+   gloss: .26,
+   glassOpacity: .38,
+   exposure: 1.12,
+   colors: [ '#FFF6E8', '#6EF2CF', '#FF91D8', '#756BFF' ],
+   shellMid: '#CDE5FF',
+   shellEdge: '#D9C8FF',
+   canvas: '#07080D',
+   glow: '#9E8CFF'
+  }),
+  spectrum: P({
+   name: 'Prismatic Field',
+   speed: 1.8,
+   zoom: .46,
+   warp: 4.4,
+   ridgeAmt: .72,
+   shade: .06,
+   sheen: .26,
+   gloss: .24,
+   glassOpacity: .4,
+   exposure: 1.5,
+   colors: [ '#FFFFFF', '#1677FF', '#F249A0', '#35E6B2' ],
+   shellMid: '#66E8FF',
+   shellEdge: '#D26CFF',
+   canvas: '#03040A',
+   glow: '#1677FF'
+  }),
+  plasma: P({
+   name: 'Neural Plasma',
+   speed: 1.32,
+   zoom: .55,
+   warp: 5.4,
+   ridgeAmt: .78,
+   sharp: 4.2,
+   shade: .16,
+   exposure: 1.25,
+   colors: [ '#06020E', '#0099FF', '#258BFF', '#1375FF' ],
+   shellMid: '#1951C2',
+   shellEdge: '#00E9FF',
+   canvas: '#020105',
+   glow: '#0099FF'
+  })
+ };
+ var VS = 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
+ var FS = [ 'precision highp float;', 'uniform vec2 res;uniform float t,radius,zoom,warp,ridgeAmt,sharp,shade,sheen,gloss,glassOp,expo,style,transparent;', 'uniform vec3 cA,cB,cC,cD,shellMid,shellEdge,canvasCol,glowCol;', 'float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}', 'float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}', 'float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p=mat2(1.6,1.2,-1.2,1.6)*p;a*=.5;}return v;}', 'vec3 pal(float x){x=clamp(x,0.,1.)*3.;if(x<1.)return mix(cA,cB,x);if(x<2.)return mix(cB,cC,x-1.);return mix(cC,cD,x-2.);}', 'vec3 fluid(vec2 p){', '  vec2 q=p*(1.5+zoom*4.);', '  float f;', '  if(style>1.5){vec2 r=mat2(.42,-.91,.91,.42)*q;r.x*=.35;f=fbm(r*2.+vec2(t*.3,0.));f=.5+.5*sin(f*12.+r.y*3.+t);}', '  else if(style>.5){vec3 acc=vec3(0.);for(int i=0;i<4;i++){float fi=float(i);float y=sin(q.x*1.3+t*(.6+fi*.2)+fi*1.7)*.55+(fi-1.5)*.25;float d=abs(q.y-y);float g=smoothstep(.12,0.,d)*(.55+.45*n(q*9.+t*2.))+exp(-d*18.)*.35;acc+=pal(fi/3.)*g;}return acc*1.3;}', '  else{vec2 w=vec2(fbm(q+t*.15),fbm(q+vec2(5.2,1.3)-t*.12));f=fbm(q+warp*.6*w);}', '  float ridge=pow(1.-abs(sin(f*6.2832)),sharp)*ridgeAmt;', '  vec3 c=pal(f*1.15-.05)+ridge*.5*pal(.95);', '  return c;}', 'void main(){', '  vec2 p=(gl_FragCoord.xy-.5*res)/min(res.x,res.y)*2.;', '  float r=length(p)/radius;', '  float px=2./min(res.x,res.y)/radius;', '  float inside=smoothstep(1.,1.-px*1.5,r);', '  float glow=exp(-max(r-1.,0.)*6.)*.35*(1.-inside);', '  vec3 bg=transparent>.5?vec3(0.):canvasCol;', '  float rr=min(r,1.);', '  float refr=glassOp*.35*pow(rr,3.);', '  vec2 dir=p/max(length(p),1e-4);', '  vec3 col=vec3(fluid(p/radius-dir*refr*1.1).r,fluid(p/radius-dir*refr).g,fluid(p/radius-dir*refr*.9).b);', '  col*=1.-shade*rr*rr;', '  col=1.-exp(-col*expo*1.15);', '  float rim=smoothstep(.72,1.,rr);', '  col=mix(col,col+shellMid*.5,rim*glassOp*.5);', '  col+=shellEdge*pow(rim,4.)*glassOp*.8;', '  vec2 k=p/radius-vec2(-.38,.42);', '  col+=vec3(1.)*exp(-dot(k,k)*14.)*gloss*1.2;', '  col+=vec3(1.)*smoothstep(.02,0.,abs(rr-.93))*sheen*.35*(.5+.5*dir.y);', '  vec3 outc=mix(bg,col,inside)+glowCol*glow;', '  float alpha=transparent>.5?max(inside,glow):1.;', '  gl_FragColor=vec4(outc,alpha);', '}' ].join(' ');
+ function hex(c) {
+  var v = parseInt(c.slice(1), 16);
+  return [ (v >> 16 & 255) / 255, (v >> 8 & 255) / 255, (v & 255) / 255 ];
+ }
+ function OrbFX(canvas, opts) {
+  opts = opts || {};
+  var d = canvas.dataset, self = this;
+  this.canvas = canvas;
+  this.p = ORBS[opts.orb || d.orb] || ORBS.siri;
+  this.mult = +(opts.speed || d.speed || 1);
+  this.transparent = (opts.bg || d.bg) === 'none';
+  var gl = canvas.getContext('webgl', {
+   premultipliedAlpha: false,
+   alpha: true,
+   antialias: true
+  });
+  if (!gl) {
+   this.fallback();
+   return;
+  }
+  this.gl = gl;
+  function sh(type, src) {
+   var s = gl.createShader(type);
+   gl.shaderSource(s, src);
+   gl.compileShader(s);
+   if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+   return s;
+  }
+  var pr = gl.createProgram();
+  gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS));
+  gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(pr);
+  gl.useProgram(pr);
+  this.pr = pr;
+  var b = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, b);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([ -1, -1, 1, -1, -1, 1, 1, 1 ]), gl.STATIC_DRAW);
+  var loc = gl.getAttribLocation(pr, 'a');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  this.u = {};
+  var names = [ 'res', 't', 'radius', 'zoom', 'warp', 'ridgeAmt', 'sharp', 'shade', 'sheen', 'gloss', 'glassOp', 'expo', 'style', 'transparent', 'cA', 'cB', 'cC', 'cD', 'shellMid', 'shellEdge', 'canvasCol', 'glowCol' ];
+  for (var i = 0; i < names.length; i++) this.u[names[i]] = gl.getUniformLocation(pr, names[i]);
+  this.reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  this.t = 0;
+  this.last = 0;
+  this.resize();
+  if (typeof ResizeObserver === 'function') new ResizeObserver(function() {
+   self.resize();
+  }).observe(canvas);
+  this.frame = function(now) {
+   var dt = self.last ? Math.min(.1, (now - self.last) / 1e3) : 0;
+   self.last = now;
+   if (!self.reduced) self.t += dt * self.p.speed * self.mult * .35;
+   self.draw();
+   if (!self.reduced) self.raf = requestAnimationFrame(self.frame);
+  };
+  this.raf = requestAnimationFrame(this.frame);
+ }
+ OrbFX.prototype.resize = function() {
+  var r = this.canvas.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+  this.canvas.width = Math.max(1, Math.round(r.width * dpr));
+  this.canvas.height = Math.max(1, Math.round(r.height * dpr));
+  if (this.gl) {
+   this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+   if (this.reduced) this.draw();
+  }
+ };
+ OrbFX.prototype.draw = function() {
+  var gl = this.gl, u = this.u, p = this.p;
+  gl.uniform2f(u.res, this.canvas.width, this.canvas.height);
+  gl.uniform1f(u.t, this.t + 3.7);
+  gl.uniform1f(u.radius, p.radius);
+  gl.uniform1f(u.zoom, p.zoom);
+  gl.uniform1f(u.warp, p.warp);
+  gl.uniform1f(u.ridgeAmt, p.ridgeAmt);
+  gl.uniform1f(u.sharp, p.sharp);
+  gl.uniform1f(u.shade, p.shade);
+  gl.uniform1f(u.sheen, p.sheen);
+  gl.uniform1f(u.gloss, p.gloss);
+  gl.uniform1f(u.glassOp, p.glassOpacity);
+  gl.uniform1f(u.expo, p.exposure);
+  gl.uniform1f(u.style, p.style);
+  gl.uniform1f(u.transparent, this.transparent ? 1 : 0);
+  gl.uniform3fv(u.cA, hex(p.colors[0]));
+  gl.uniform3fv(u.cB, hex(p.colors[1]));
+  gl.uniform3fv(u.cC, hex(p.colors[2]));
+  gl.uniform3fv(u.cD, hex(p.colors[3]));
+  gl.uniform3fv(u.shellMid, hex(p.shellMid));
+  gl.uniform3fv(u.shellEdge, hex(p.shellEdge));
+  gl.uniform3fv(u.canvasCol, hex(p.canvas));
+  gl.uniform3fv(u.glowCol, hex(p.glow));
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+ };
+ OrbFX.prototype.set = function(opts) {
+  if (opts.orb && ORBS[opts.orb]) this.p = ORBS[opts.orb];
+  if (opts.speed) this.mult = +opts.speed;
+  if (this.reduced) this.draw();
+ };
+ OrbFX.prototype.fallback = function() {
+  var p = this.p, c = this.canvas;
+  c.style.background = 'radial-gradient(circle at 35% 30%, ' + p.colors[3] + ', ' + p.colors[2] + ' 30%, ' + p.colors[1] + ' 55%, ' + p.colors[0] + ' 70%, ' + p.canvas + ' 71%)';
+ };
+ OrbFX.prototype.destroy = function() {
+  cancelAnimationFrame(this.raf);
+ };
+ OrbFX.ORBS = ORBS;
+ if (typeof window !== 'undefined') {
+  window.OrbFX = OrbFX;
+  var boot = function() {
+   var els = document.querySelectorAll('canvas.orb-fx');
+   for (var i = 0; i < els.length; i++) if (!els[i]._orbFx) els[i]._orbFx = new OrbFX(els[i]);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+ }
+ if (typeof module !== 'undefined') module.exports = OrbFX;
+})();
+</script>
+</body>
+</html>
