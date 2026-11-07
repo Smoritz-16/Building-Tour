@@ -180,6 +180,8 @@ main { position: relative; z-index: 2; pointer-events: none; }
 .tour[hidden] { display: none; }
 .tour.is-on { opacity: 1; }
 .tour video, .tour img.tour-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tour video { opacity: 0; }
+.tour video.is-on { opacity: 1; }
 .tour img.tour-still { opacity: 0; transition: opacity .7s ease; }
 .tour img.tour-still.is-on { opacity: 1; }
 .tour-shade { position: absolute; inset: auto 0 0 0; height: 34%; background: linear-gradient(to top, rgba(8,8,9,.72), rgba(8,8,9,0)); pointer-events: none; }
@@ -189,8 +191,8 @@ main { position: relative; z-index: 2; pointer-events: none; }
 .tour-caption span { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: rgba(236,231,220,.8); }
 .tour-caption strong { font: 400 clamp(26px, 3vw, 38px)/1 var(--serif); color: #fff; }
 .tour-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
-.tour-tabs button, .tour-back { padding: 10px 14px; border: 1px solid rgba(255,255,255,.3); border-radius: 2px; background: rgba(10,10,10,.42);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: #fff; font: 500 11px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase;
+.tour-tabs button, .tour-back { padding: 10px 14px; border: 1px solid rgba(255,255,255,.3); border-radius: 2px; background: rgba(10,10,10,.6);
+  color: #fff; font: 500 11px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase;
   cursor: pointer; white-space: nowrap; transition: background .2s, color .2s, border-color .2s; }
 .tour-tabs button:hover, .tour-back:hover { border-color: #fff; }
 .tour-tabs button[aria-selected="true"] { background: #fff; color: #111; border-color: #fff; }
@@ -1579,25 +1581,47 @@ function start(canvas) {
 
   /* Full-screen tour: the camera dives at the room in 3D, then the rendered fly-in takes over */
   const tour = document.getElementById('tour');
-  const tourVideo = document.getElementById('tour-video');
   const tourStill = document.getElementById('tour-still');
   const tourTabs = [...document.querySelectorAll('#tour-tabs button')];
-  let tourTimer = 0, tourContext = null;
+  let tourTimer = 0, tourContext = null, tourCovering = false, tourRoom = null;
+  /* Every room's clip and resting still are loaded once, up front, so switching tabs is instant */
+  const tourVideos = {}, tourStills = {};
+  function preloadTour() {
+    if (Object.keys(tourVideos).length) return;
+    const first = document.getElementById('tour-video');
+    Object.keys(TOUR_ROOMS).forEach((room, i) => {
+      const v = i === 0 ? first : first.cloneNode(false);
+      v.removeAttribute('id');
+      v.muted = true; v.playsInline = true; v.preload = 'auto';
+      v.poster = `media/rooms/${room}-top.jpg`;
+      v.src = `media/rooms/${room}.mp4`;
+      v.className = 'tour-video';
+      if (i) first.after(v);
+      v.addEventListener('ended', () => { if (tourRoom === room) tourStill.classList.add('is-on'); });
+      v.addEventListener('error', () => { if (tourRoom === room) tourStill.classList.add('is-on'); });
+      tourVideos[room] = v;
+      const img = new Image(); img.src = `media/rooms/${room}.jpg`; tourStills[room] = img;
+    });
+  }
   function playRoom(room) {
+    preloadTour();
+    tourRoom = room;
     tourTabs.forEach((b) => b.setAttribute('aria-selected', String(b.dataset.room === room)));
     document.getElementById('tour-title').textContent = TOUR_ROOMS[room];
     tourStill.classList.remove('is-on');
-    tourStill.src = `media/rooms/${room}.jpg`;
+    tourStill.src = tourStills[room].src;
     tourStill.alt = `${TOUR_ROOMS[room]}, rendering`;
-    tourVideo.poster = `media/rooms/${room}-top.jpg`;
-    tourVideo.src = `media/rooms/${room}.mp4`;
-    tourVideo.currentTime = 0;
+    Object.entries(tourVideos).forEach(([r, v]) => {
+      const on = r === room;
+      v.classList.toggle('is-on', on);
+      if (!on) v.pause();
+    });
+    const v = tourVideos[room];
+    v.currentTime = 0;
     if (reduced) { tourStill.classList.add('is-on'); return; }
-    const p = tourVideo.play();
+    const p = v.play();
     if (p && p.catch) p.catch(() => tourStill.classList.add('is-on'));
   }
-  tourVideo.addEventListener('ended', () => tourStill.classList.add('is-on'));
-  tourVideo.addEventListener('error', () => tourStill.classList.add('is-on'));
   function openTour(label) {
     const room = tourRoomFor(label.text);
     if (!room) return;
@@ -1609,13 +1633,16 @@ function start(canvas) {
       tour.hidden = false;
       requestAnimationFrame(() => tour.classList.add('is-on'));
       playRoom(room);
+      /* once the tour covers the screen, the 3D scene behind it stops drawing */
+      setTimeout(() => { if (tour.classList.contains('is-on')) tourCovering = true; }, 650);
     }, reduced ? 0 : 650);
   }
   function closeTour() {
     clearTimeout(tourTimer);
     if (tour.hidden) return false;
+    tourCovering = false;
     tour.classList.remove('is-on');
-    tourVideo.pause();
+    Object.values(tourVideos).forEach((v) => v.pause());
     setTimeout(() => { if (!tour.classList.contains('is-on')) tour.hidden = true; }, 600);
     tourContext = null;
     setFocus(null);
@@ -1831,6 +1858,7 @@ function start(canvas) {
     if (level == null) return;
     interior = buildInterior(floors.find((f) => f.level === level));
     scene.add(interior.root);
+    preloadTour();
     interior.labels.forEach((l) => {
       const el = document.createElement('div');
       el.className = 'room-label' + (l.kind === 'unit' ? ' unit' : '');
@@ -1929,6 +1957,7 @@ function start(canvas) {
   function frame(now) {
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
+    if (tourCovering) { requestAnimationFrame(frame); return; }
     const { shot, explore } = targetShot();
     if (exploreActive && !explore) { ui.setHover(null); showTip(null); }
     exploreActive = explore;

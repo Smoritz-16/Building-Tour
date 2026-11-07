@@ -25,9 +25,9 @@ for i in range(43):
         im = Image.open(fix).convert('RGB')
     im.save(f'{seq}/{i:03d}.png')
 PY
-ffmpeg -y -loglevel error -framerate 14 -i "$SEQ/%03d.png" \
-  -vf "minterpolate=fps=24:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,scale=1280:720:flags=lanczos,format=yuv420p" \
-  -c:v libx264 -preset veryfast -crf 21 -movflags +faststart -an "$DST/$R.mp4"
+ffmpeg -y -loglevel error -framerate 12 -i "$SEQ/%03d.png" \
+  -vf "minterpolate=fps=30:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,scale=1280:720:flags=lanczos,format=yuv420p" \
+  -c:v libx264 -preset veryfast -crf 21 -g 30 -movflags +faststart -an "$DST/$R.mp4"
 ffmpeg -y -loglevel error -i "$SRC/$R/000.jpg" -vf scale=1280:720:flags=lanczos -q:v 4 "$DST/$R-top.jpg"
 ffmpeg -y -loglevel error -i "$SRC/${R}_final/021.jpg" -q:v 3 "$DST/$R.jpg"
 rm -rf "$SEQ"
