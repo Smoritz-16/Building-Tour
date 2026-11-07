@@ -174,36 +174,29 @@ main { position: relative; z-index: 2; pointer-events: none; }
 .room-exit:hover { border-color: var(--brass); }
 .room-exit svg { width: 16px; height: 16px; }
 
-/* Room photo view: replaces the availability panel while a room is zoomed */
-.explore .panel { position: sticky; }
-.room-view { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; padding: 22px 22px 20px; overflow-y: auto;
-  background: #0c0d0d; border-radius: inherit; opacity: 0; transform: translateX(-14px); pointer-events: none; transition: opacity .3s, transform .3s; }
-.room-view.is-on { opacity: 1; transform: none; pointer-events: auto; }
-.room-view-back { align-self: flex-start; margin-bottom: 14px; padding: 0; border: 0; background: none; color: var(--muted); font: 500 13px/1 var(--sans); cursor: pointer; }
-.room-view-back:hover { color: var(--ink); }
-.rv-photo { position: relative; aspect-ratio: 4 / 3; border-radius: 3px; overflow: hidden; background: #1a1b1c; flex: none; }
-.rv-open { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
-.rv-photo img { display: block; width: 100%; height: 100%; object-fit: cover; transition: opacity .3s; }
-.rv-photo img.is-loading { opacity: .35; }
-.rv-count { position: absolute; left: 10px; bottom: 10px; padding: 3px 8px; border-radius: 999px; background: rgba(9,10,10,.7); font-size: 11px; color: var(--ink); }
-.rv-nav { position: absolute; top: 50%; width: 34px; height: 34px; margin-top: -17px; border: 1px solid rgba(236,231,220,.25); border-radius: 50%;
-  background: rgba(9,10,10,.6); color: var(--ink); font-size: 20px; line-height: 1; cursor: pointer; transition: border-color .2s, background .2s; }
-.rv-nav:hover { border-color: var(--brass); background: rgba(9,10,10,.85); }
-.rv-nav.prev { left: 10px; } .rv-nav.next { right: 10px; }
-.room-view .eyebrow { margin-top: 18px; }
-.rv-title { margin: 6px 0 0; font: 400 32px/1.05 var(--serif); color: var(--ink); }
-.rv-copy { margin-top: 10px; color: #cfc9bd; font-size: 14px; }
-.rv-thumbs { display: flex; gap: 8px; margin-top: 16px; }
-.rv-thumbs button { flex: 1; aspect-ratio: 4 / 3; padding: 0; border: 1px solid transparent; border-radius: 2px; overflow: hidden; background: #1a1b1c; cursor: pointer; opacity: .55; transition: opacity .2s, border-color .2s; }
-.rv-thumbs button[aria-current="true"], .rv-thumbs button:hover { opacity: 1; border-color: var(--brass); }
-.rv-thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.rv-credit { margin-top: auto; padding-top: 16px; font-size: 11px; color: var(--muted); }
-.rv-credit a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
-.lightbox { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 4vh 4vw; background: rgba(5,5,6,.92); cursor: zoom-out; }
-.lightbox[hidden] { display: none; }
-.lightbox img { max-width: 100%; max-height: 88vh; border-radius: 3px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
-.lightbox-close { position: absolute; top: 18px; right: 22px; width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 50%; background: rgba(9,10,10,.7); color: var(--ink); font-size: 24px; cursor: pointer; }
-.lightbox-credit { position: absolute; bottom: 16px; left: 0; right: 0; text-align: center; font-size: 12px; color: var(--muted); }
+.detail-actions { display: flex; gap: 8px; }
+/* Room tour: full-screen rendered fly-in, like a developer's leasing site */
+.tour { position: fixed; inset: 0; z-index: 40; background: #0b0b0c; opacity: 0; transition: opacity .6s ease; }
+.tour[hidden] { display: none; }
+.tour.is-on { opacity: 1; }
+.tour video, .tour img.tour-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tour img.tour-still { opacity: 0; transition: opacity .7s ease; }
+.tour img.tour-still.is-on { opacity: 1; }
+.tour-shade { position: absolute; inset: auto 0 0 0; height: 34%; background: linear-gradient(to top, rgba(8,8,9,.72), rgba(8,8,9,0)); pointer-events: none; }
+.tour-bar { position: absolute; left: clamp(20px, 4vw, 56px); right: clamp(20px, 4vw, 56px); bottom: 28px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+.tour-left { display: flex; align-items: flex-end; gap: 22px; }
+.tour-caption { display: grid; gap: 4px; }
+.tour-caption span { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: rgba(236,231,220,.8); }
+.tour-caption strong { font: 400 clamp(26px, 3vw, 38px)/1 var(--serif); color: #fff; }
+.tour-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tour-tabs button, .tour-back { padding: 10px 14px; border: 1px solid rgba(255,255,255,.3); border-radius: 2px; background: rgba(10,10,10,.42);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: #fff; font: 500 11px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase;
+  cursor: pointer; white-space: nowrap; transition: background .2s, color .2s, border-color .2s; }
+.tour-tabs button:hover, .tour-back:hover { border-color: #fff; }
+.tour-tabs button[aria-selected="true"] { background: #fff; color: #111; border-color: #fff; }
+.tour-note { position: absolute; top: 26px; right: clamp(20px, 4vw, 56px); margin: 0; font-size: 11px; letter-spacing: .08em; color: rgba(255,255,255,.75); text-shadow: 0 1px 8px rgba(0,0,0,.35); }
+.tour-brand { position: absolute; top: 22px; left: clamp(20px, 4vw, 56px); margin: 0; font: 400 18px/1 var(--serif); letter-spacing: .32em; color: #fff; text-shadow: 0 1px 10px rgba(0,0,0,.3); }
+@media (max-width: 720px) { .tour-left { flex-direction: column-reverse; align-items: flex-start; gap: 12px; } .tour-tabs button { padding: 8px 10px; font-size: 10px; } }
 
 /* Enquire */
 .enquire .panel { width: min(520px, 100%); }
@@ -363,27 +356,16 @@ footer { position: relative; z-index: 2; background: #0a0600; border-top: 1px so
         </div>
         <div class="detail-foot">
           <p id="detail-note">Harbour views</p>
-          <button class="btn" type="button" id="tour-btn">Book a tour</button>
+          <span class="detail-actions">
+            <button class="btn ghost" type="button" id="rooms-btn">View rooms</button>
+            <button class="btn" type="button" id="tour-btn">Book a tour</button>
+          </span>
         </div>
       </div>
 
       <div class="list-head" aria-hidden="true"><span>Floor</span><span>Residence</span><span>Rent</span></div>
       <div class="list" id="list" role="list"></div>
 
-      <section class="room-view" id="room-view" aria-hidden="true" aria-live="polite">
-        <button class="room-view-back" id="room-view-back" type="button">&larr; Whole floor</button>
-        <div class="rv-photo">
-          <button class="rv-open" id="rv-open" type="button" aria-label="Open photo full screen"><img id="rv-img" alt=""></button>
-          <span class="rv-count" id="rv-count">1 / 3</span>
-          <button class="rv-nav prev" id="rv-prev" type="button" aria-label="Previous photo">&#8249;</button>
-          <button class="rv-nav next" id="rv-next" type="button" aria-label="Next photo">&#8250;</button>
-        </div>
-        <p class="eyebrow" id="rv-eyebrow">Residence 22A</p>
-        <h3 class="rv-title" id="rv-title">Kitchen</h3>
-        <p class="rv-copy" id="rv-copy"></p>
-        <div class="rv-thumbs" id="rv-thumbs"></div>
-        <p class="rv-credit">Representative interior. <a id="rv-credit" target="_blank" rel="noopener"></a></p>
-      </section>
     </div>
   </section>
 
@@ -424,10 +406,24 @@ footer { position: relative; z-index: 2; background: #0a0600; border-top: 1px so
 
 <div class="floor-tip" id="floor-tip" aria-hidden="true"></div>
 <div class="room-labels" id="room-labels" aria-hidden="true"></div>
-<div class="lightbox" id="lightbox" hidden role="dialog" aria-label="Room photo">
-  <img id="lightbox-img" alt="">
-  <button class="lightbox-close" id="lightbox-close" type="button" aria-label="Close photo">&times;</button>
-  <p class="lightbox-credit" id="lightbox-credit"></p>
+<div class="tour" id="tour" hidden role="dialog" aria-label="Room tour">
+  <video id="tour-video" muted playsinline preload="auto"></video>
+  <img class="tour-still" id="tour-still" alt="">
+  <div class="tour-shade"></div>
+  <p class="tour-brand">CALDER</p>
+  <p class="tour-note">Rendering &middot; representative finishes</p>
+  <div class="tour-bar">
+    <div class="tour-left">
+      <button class="tour-back" type="button" id="tour-back">&larr; Back to floor plan</button>
+      <div class="tour-caption"><span id="tour-eyebrow">Floor 22 &middot; Residence 22A</span><strong id="tour-title">Living room</strong></div>
+    </div>
+    <div class="tour-tabs" role="tablist" id="tour-tabs">
+      <button type="button" role="tab" data-room="living">Living room</button>
+      <button type="button" role="tab" data-room="kitchen">Kitchen &amp; dining</button>
+      <button type="button" role="tab" data-room="bedroom">Primary bedroom</button>
+      <button type="button" role="tab" data-room="bath">Primary bath</button>
+    </div>
+  </div>
 </div>
 <div class="room-hint" id="room-hint" aria-live="polite">
   <span id="room-hint-text"><strong>Floor 22</strong> · drag to turn · click a residence to switch</span>
@@ -608,6 +604,7 @@ window.CALDER = (function () {
   });
   document.getElementById('detail-close').addEventListener('click', () => ui.select(null));
   document.getElementById('room-back').addEventListener('click', () => ui.select(null));
+  document.getElementById('rooms-btn').addEventListener('click', () => { if (ui.openRoomTour) ui.openRoomTour('living'); });
   document.getElementById('room-exit').addEventListener('click', () => ui.select(null));
   document.getElementById('tour-btn').addEventListener('click', () => {
     if (selectedUnit) select.value = selectedUnit.id;
@@ -1469,59 +1466,23 @@ function mergeInterior(root, pads, owned) {
   pads.forEach((p) => { p.receiveShadow = true; });
 }
 
-/* ---------- Real photos for each kind of room ----------
-   Free-licensed photos from Unsplash (unsplash.com/license), loaded straight from Unsplash's image CDN.
-   Calder Quay is invented, so these are shown as representative interiors, each credited to its photographer. */
-const ROOM_PHOTOS = {
-  kitchen: [
-    ['1682888813913-e13f18692019', 'o-uPDNNSsDA', 'Zac Gudakov'],
-    ['1638886043487-72d203fa66b6', 'szG9kzMLcPE', 'Lotus Design N Print'],
-    ['1602028915047-37269d1a73f7', 'RwXneIyqxAw', 'Lotus Design N Print']
-  ],
-  living: [
-    ['1600494448850-6013c64ba722', 'NTaF5rBmlyE', 'Collov Home Design'],
-    ['1688646953306-5ec93eab8c06', 'bYqaOabPmTk', 'amir hossein'],
-    ['1757924461488-ef9ad0670978', 'LqGf5UvHCZ8', 'Aalo Lens']
-  ],
-  dining: [
-    ['1618221469555-7f3ad97540d6', '4xRP0Ajk9ys', 'Spacejoy'],
-    ['1611095210561-67f0832b1ca3', '-Vfa35ueUCo', 'Lotus Design N Print']
-  ],
-  bedroom: [
-    ['1604580040660-f0a7f9abaea6', 'f9O-1eKGlQM', 'Amira Aboalnaga'],
-    ['1644057501622-dfa7dd26dbfb', 'vz9IbCAXHKQ', 'Ali Moradi'],
-    ['1757344454333-cc666252e596', 'u-RIsXlI8Q8', 'Poojan Thanekar'],
-    ['1696762932825-2737db830bbe', 'ErDrzSvSNv4', 'Le Quan']
-  ],
-  bath: [
-    ['1564540579594-0930edb6de43', 'yb9b2wbhxG4', 'Christian Mackie'],
-    ['1760067537877-dd4d2722c649', 'k8bh3LZpsyI', 'Alef Morais'],
-    ['1776525433347-13ffc965601a', 'q-LqibnwN8Y', 'Poojan Thanekar'],
-    ['1564540583246-934409427776', '6BJu73-UJpg', 'Christian Mackie']
-  ],
-  study: [
-    ['1622127922040-13cab637ee78', 'PhOABIwQrRE', 'TheStandingDesk']
-  ]
+/* ---------- Rendered room tours ----------
+   Each room type has a pre-rendered fly-in (Blender Cycles): it starts above the room with the ceiling
+   lifted off and glides down to eye level, then rests on a high-resolution still. Files live in media/rooms/. */
+const TOUR_ROOMS = {
+  living: 'Living room',
+  kitchen: 'Kitchen & dining',
+  bedroom: 'Primary bedroom',
+  bath: 'Primary bath'
 };
-const ROOM_COPY = {
-  kitchen: 'Stone counters, a walnut island with seating for three, integrated appliances and a gas hob.',
-  living: 'Floor-to-ceiling glass on two sides, oak floors and room for a full sofa and lounge chairs.',
-  dining: 'Seats six beside the glass, a few steps from the kitchen island.',
-  bedroom: 'Quiet side of the plate, with a fitted wardrobe and blackout blinds behind the glass.',
-  bath: 'Stone throughout, a walk-in shower or deep soaking tub, heated floors and a fitted vanity.',
-  study: 'A desk nook tucked off the living space, wired for work.'
-};
-function roomType(text) {
+function tourRoomFor(text) {
   const t = text.toLowerCase();
   if (/bath|powder/.test(t)) return 'bath';
-  if (/kitchen/.test(t)) return 'kitchen';
+  if (/kitchen|dining/.test(t)) return 'kitchen';
   if (/bed|primary|suite/.test(t)) return 'bedroom';
-  if (/dining/.test(t)) return 'dining';
-  if (/living|reading|family/.test(t)) return 'living';
-  if (/study/.test(t)) return 'study';
+  if (/living|reading|family|study/.test(t)) return 'living';
   return null;
 }
-const photoUrl = (id, w) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=80`;
 
 function start(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -1613,71 +1574,59 @@ function start(canvas) {
     roomFocus = label;
     if (label) label.el.classList.add('is-focus');
     document.getElementById('room-whole').hidden = !label;
-    showRoomPhotos(label);
+    if (label && label.kind === 'room') openTour(label);
   }
 
-  /* The left panel turns into a photo view of the zoomed room */
-  const roomPanel = document.getElementById('room-view');
-  const rv = {
-    img: document.getElementById('rv-img'), count: document.getElementById('rv-count'),
-    eyebrow: document.getElementById('rv-eyebrow'), title: document.getElementById('rv-title'),
-    copy: document.getElementById('rv-copy'), thumbs: document.getElementById('rv-thumbs'), credit: document.getElementById('rv-credit'),
-    list: [], index: 0
+  /* Full-screen tour: the camera dives at the room in 3D, then the rendered fly-in takes over */
+  const tour = document.getElementById('tour');
+  const tourVideo = document.getElementById('tour-video');
+  const tourStill = document.getElementById('tour-still');
+  const tourTabs = [...document.querySelectorAll('#tour-tabs button')];
+  let tourTimer = 0, tourContext = null;
+  function playRoom(room) {
+    tourTabs.forEach((b) => b.setAttribute('aria-selected', String(b.dataset.room === room)));
+    document.getElementById('tour-title').textContent = TOUR_ROOMS[room];
+    tourStill.classList.remove('is-on');
+    tourStill.src = `media/rooms/${room}.jpg`;
+    tourStill.alt = `${TOUR_ROOMS[room]}, rendering`;
+    tourVideo.poster = `media/rooms/${room}-top.jpg`;
+    tourVideo.src = `media/rooms/${room}.mp4`;
+    tourVideo.currentTime = 0;
+    if (reduced) { tourStill.classList.add('is-on'); return; }
+    const p = tourVideo.play();
+    if (p && p.catch) p.catch(() => tourStill.classList.add('is-on'));
+  }
+  tourVideo.addEventListener('ended', () => tourStill.classList.add('is-on'));
+  tourVideo.addEventListener('error', () => tourStill.classList.add('is-on'));
+  function openTour(label) {
+    const room = tourRoomFor(label.text);
+    if (!room) return;
+    clearTimeout(tourTimer);
+    tourContext = label;
+    /* let the 3D camera start its dive first, then cut into the rendered room */
+    tourTimer = setTimeout(() => {
+      document.getElementById('tour-eyebrow').textContent = label.unitId ? `Floor ${label.level} · Residence ${label.unitId}` : `Floor ${label.level}`;
+      tour.hidden = false;
+      requestAnimationFrame(() => tour.classList.add('is-on'));
+      playRoom(room);
+    }, reduced ? 0 : 650);
+  }
+  function closeTour() {
+    clearTimeout(tourTimer);
+    if (tour.hidden) return false;
+    tour.classList.remove('is-on');
+    tourVideo.pause();
+    setTimeout(() => { if (!tour.classList.contains('is-on')) tour.hidden = true; }, 600);
+    tourContext = null;
+    setFocus(null);
+    return true;
+  }
+  tourTabs.forEach((b) => b.addEventListener('click', () => playRoom(b.dataset.room)));
+  ui.openRoomTour = (room) => {
+    if (ui.selected == null) return;
+    openTour({ text: TOUR_ROOMS[room], level: ui.selected, unitId: ui.unit, kind: 'room' });
   };
-  const lightbox = document.getElementById('lightbox');
-  const lightboxImg = document.getElementById('lightbox-img');
-  function paintPhoto() {
-    const [id, slug, who] = rv.list[rv.index];
-    rv.img.classList.add('is-loading');
-    rv.img.onload = rv.img.onerror = () => rv.img.classList.remove('is-loading');
-    rv.img.src = photoUrl(id, 1100);
-    rv.img.alt = `${rv.title.textContent}, representative interior`;
-    rv.count.textContent = `${rv.index + 1} / ${rv.list.length}`;
-    rv.count.hidden = rv.list.length < 2;
-    document.getElementById('rv-prev').hidden = document.getElementById('rv-next').hidden = rv.list.length < 2;
-    rv.credit.textContent = `Photo: ${who} / Unsplash`;
-    rv.credit.href = `https://unsplash.com/photos/${slug}`;
-    [...rv.thumbs.children].forEach((b, i) => b.setAttribute('aria-current', String(i === rv.index)));
-  }
-  function showRoomPhotos(label) {
-    const type = label && label.kind === 'room' ? roomType(label.text) : null;
-    if (!type) { roomPanel.classList.remove('is-on'); roomPanel.setAttribute('aria-hidden', 'true'); return; }
-    const all = ROOM_PHOTOS[type];
-    /* Each room starts on its own photo, so the two bedrooms on a floor don't look identical */
-    let h = 0;
-    for (const ch of `${label.level}${label.unitId}${label.text}`) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    const start = h % all.length;
-    rv.list = all.map((_, i) => all[(start + i) % all.length]);
-    rv.index = 0;
-    rv.title.textContent = label.text;
-    rv.eyebrow.textContent = label.unitId ? `Residence ${label.unitId} · Floor ${label.level}` : `Floor ${label.level}`;
-    rv.copy.textContent = ROOM_COPY[type];
-    rv.thumbs.innerHTML = '';
-    if (rv.list.length > 1) rv.list.forEach(([id], i) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.setAttribute('aria-label', `Photo ${i + 1}`);
-      b.innerHTML = `<img src="${photoUrl(id, 240)}" alt="" loading="lazy">`;
-      b.addEventListener('click', () => { rv.index = i; paintPhoto(); });
-      rv.thumbs.appendChild(b);
-    });
-    paintPhoto();
-    roomPanel.classList.add('is-on');
-    roomPanel.setAttribute('aria-hidden', 'false');
-  }
-  const step = (d) => { if (rv.list.length > 1) { rv.index = (rv.index + d + rv.list.length) % rv.list.length; paintPhoto(); } };
-  document.getElementById('rv-prev').addEventListener('click', () => step(-1));
-  document.getElementById('rv-next').addEventListener('click', () => step(1));
-  document.getElementById('room-view-back').addEventListener('click', () => setFocus(null));
-  document.getElementById('rv-open').addEventListener('click', () => {
-    const [id, , who] = rv.list[rv.index];
-    lightboxImg.src = photoUrl(id, 2400);
-    lightboxImg.alt = rv.img.alt;
-    document.getElementById('lightbox-credit').textContent = `${rv.title.textContent} · representative interior · Photo: ${who} / Unsplash`;
-    lightbox.hidden = false;
-  });
-  const closeLightbox = () => { lightbox.hidden = true; lightboxImg.removeAttribute('src'); };
-  lightbox.addEventListener('click', closeLightbox);
+  document.getElementById('tour-back').addEventListener('click', closeTour);
   let roomMix = 0;                      /* 0 = looking at the tower, 1 = looking down into a floor */
   const exploreIndex = ui.shots.indexOf('explore');
   const ease = (t) => t * t * (3 - 2 * t);
@@ -1862,8 +1811,7 @@ function start(canvas) {
   const exitBtn = document.getElementById('room-exit');
   document.getElementById('room-whole').addEventListener('click', () => setFocus(null));
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') { if (!lightbox.hidden) closeLightbox(); else stepOut(); }
-    if (roomPanel.classList.contains('is-on') && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) step(event.key === 'ArrowRight' ? 1 : -1);
+    if (event.key === 'Escape' && !closeTour()) stepOut();
   });
   const hint = document.getElementById('room-hint');
   const hintText = document.getElementById('room-hint-text');
@@ -1968,7 +1916,7 @@ function start(canvas) {
     if (on && hint.dataset.level !== String(level)) {
       hint.dataset.level = level;
       const two = interior && interior.pads.length > 1;
-      hintText.innerHTML = `<strong>Floor ${level}</strong> · click a room name to zoom in${two ? ' · click a residence to switch' : ''} · click outside to exit`;
+      hintText.innerHTML = `<strong>Floor ${level}</strong> · click a room name to step inside${two ? ' · click a residence to switch' : ''} · click outside to exit`;
     }
   }
 

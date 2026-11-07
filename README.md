@@ -15,6 +15,8 @@ python3 tools/build.py
 The building, residences and prices are invented. The tour form does not send anything.
 
 
-## Photos
+## Room tours
 
-Room photos are free-licensed images from [Unsplash](https://unsplash.com/license), loaded from Unsplash's image CDN and credited to each photographer in the room view. Calder Quay is fictional, so they're labelled as representative interiors.
+Click a room name inside a floor (or "View rooms" in the floor details) and the 3D camera dives at the room, then a full-screen rendered fly-in takes over: it starts above the room with the ceiling lifted off and glides down to eye level, like a developer's leasing site. Tabs switch between the living room, kitchen and dining, primary bedroom and primary bath.
+
+The rooms are modelled and rendered in Blender (Cycles) by `tools/render/rooms.py`; `tools/render/encode.sh` turns the frames into the clips in `media/rooms/`. Calder Quay is fictional, so the renders are labelled as representative finishes.
