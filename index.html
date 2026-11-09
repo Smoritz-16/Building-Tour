@@ -685,7 +685,7 @@ window.CALDER = (function () {
 
 <script type="module">
 /* ---------- The tower: built entirely in code with Three.js ---------- */
-let THREE, mergeGeometries, EffectComposer, RenderPass, UnrealBloomPass, OutputPass;
+let THREE, mergeGeometries, EffectComposer, RenderPass, UnrealBloomPass, OutputPass, GLTFLoader = null, MeshoptDecoder = null;
 
 const { floors, FIRST, LAST, TWIST_DEG } = window.CALDER;
 const ui = window.CALDER_UI;
@@ -1387,7 +1387,8 @@ function buildInterior(floor) {
   root.position.y = levelY(floor.level) + 0.056;
   root.rotation.y = levelAngle(floor.level);
   root.scale.set(M_XZ, M_Y, M_XZ);
-  const labels = [], pads = [], owned = [];
+  const labels = [], pads = [], owned = [], mats = [];
+  const useModel = floorModelKeys(floor).every(floorModelReady);
   let currentUnit = floor.full ? floor.units[0].id : null;
   const addLabel = (parent, text, x, z, kind = 'room', unitId = null) => {
     if (unitId == null) unitId = currentUnit;
@@ -1404,6 +1405,7 @@ function buildInterior(floor) {
     const furn = new THREE.Group(); furn.position.y = 0.04; root.add(furn);
     fullResidence(furn, (t, x, z) => addLabel(furn, t, x, z));
     liftCore(furn, (t, x, z) => addLabel(furn, t, x, z));
+    if (useModel) { root.remove(base); mats.push(placeFloorModel(furn, 'full')); }
   } else {
     const geo = halfFloorGeometry(); owned.push(geo);
     const furnAll = new THREE.Group(); furnAll.position.y = 0.04; root.add(furnAll);
@@ -1418,16 +1420,25 @@ function buildInterior(floor) {
       const furn = new THREE.Group(); furn.position.y = 0.04; half.add(furn);
       currentUnit = unit.id;
       halfResidence(furn, unit.beds, (t, x, z) => addLabel(furn, t, x, z));
+      if (useModel) {
+        const m = placeFloorModel(furn, 'half' + Math.min(3, Math.max(1, unit.beds)));
+        mats.push(m);
+        base.userData.baked = m;
+        mat.colorWrite = false; mat.depthWrite = false;     /* still there for clicks, drawn by the model */
+      }
       currentUnit = null;
       addLabel(furn, unit.id, 6.6, -1.9, 'unit', unit.id);
     });
     wall(furnAll, 0, -7.85, 0, -3.0);
     wall(furnAll, 0, 3.0, 0, 7.85);
     liftCore(furnAll, (t, x, z) => addLabel(furnAll, t, x, z));
+    if (useModel) {                                         /* the party walls and lift core are in the models */
+      for (let i = furnAll.children.length - 1; i >= 0; i -= 1) if (furnAll.children[i].isMesh) furnAll.remove(furnAll.children[i]);
+    }
   }
   mergeInterior(root, pads, owned);
   root.updateMatrixWorld(true);
-  return { root, labels, pads, owned, level: floor.level };
+  return { root, labels, pads, owned, mats: mats.filter(Boolean), model: useModel, level: floor.level };
 }
 
 /* Hundreds of little boxes become one mesh per material, so the floor draws in a few dozen calls */
@@ -1436,7 +1447,7 @@ function mergeInterior(root, pads, owned) {
   const toRoot = new THREE.Matrix4().copy(root.matrixWorld).invert();
   const rel = new THREE.Matrix4();
   const byMat = new Map(), meshes = [];
-  root.traverse((o) => { if (o.isMesh && !pads.includes(o)) meshes.push(o); });
+  root.traverse((o) => { if (o.isMesh && !pads.includes(o) && !o.userData.keep) meshes.push(o); });
   meshes.forEach((m) => {
     rel.multiplyMatrices(toRoot, m.matrixWorld);
     let g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
@@ -1466,6 +1477,59 @@ function mergeInterior(root, pads, owned) {
     root.add(mesh);
   });
   pads.forEach((p) => { p.receiveShadow = true; });
+}
+
+/* ---------- Blender floor models ----------
+   Every furnished layout is also modelled in Blender (tools/render/floor.py) after real high-end residences,
+   lit with Cycles and baked into one texture: media/floors/half1-3.glb (one residence on half a floor, mirrored
+   for the west half) and full.glb. Once a model has loaded it replaces the box furniture; the room labels and
+   click targets stay exactly where they were. Until then (or if it can't load) the boxes are shown. */
+const FLOOR_MODELS = {};          /* key -> promise while loading, { scene } once loaded, 'failed' if it couldn't */
+const ALL_FLOOR_MODELS = ['half1', 'half2', 'half3', 'full'];
+function floorModelKeys(floor) {
+  return floor.full ? ['full'] : [...new Set(floor.units.map((u) => 'half' + Math.min(3, Math.max(1, u.beds))))];
+}
+const floorModelReady = (key) => !!(FLOOR_MODELS[key] && FLOOR_MODELS[key].scene);
+function loadFloorModel(key) {
+  if (FLOOR_MODELS[key] || !GLTFLoader) return Promise.resolve(FLOOR_MODELS[key]);
+  const loader = new GLTFLoader();
+  if (MeshoptDecoder) loader.setMeshoptDecoder(MeshoptDecoder);
+  const pending = new Promise((resolve) => {
+    loader.load(`media/floors/${key}.glb`, (gltf) => {
+      /* the models carry no normals (nothing is lit at runtime), so the glass is a flat tint too */
+      const glass = new THREE.MeshBasicMaterial({ color: 0xe4f1f3, transparent: true, opacity: 0.2, depthWrite: false, toneMapped: false });
+      gltf.scene.traverse((o) => {
+        if (!o.isMesh) return;
+        const map = o.material.map;
+        if (map) {
+          map.anisotropy = 8;
+          o.material = new THREE.MeshBasicMaterial({ map, toneMapped: false });   /* lighting is already in the texture */
+          o.userData.baked = true;
+        } else {
+          o.material = glass;
+        }
+        o.userData.keep = true;
+      });
+      FLOOR_MODELS[key] = { scene: gltf.scene };
+      resolve(FLOOR_MODELS[key]);
+    }, undefined, (err) => { console.warn(`Floor model ${key} unavailable, using the drawn furniture`, err); FLOOR_MODELS[key] = 'failed'; resolve(null); });
+  });
+  FLOOR_MODELS[key] = pending;
+  return pending;
+}
+/* Swap a furniture group's boxes for the baked model. Returns the unit's own copy of the baked material. */
+function placeFloorModel(furn, key) {
+  for (let i = furn.children.length - 1; i >= 0; i -= 1) {
+    const c = furn.children[i];
+    if (c.isMesh || c.isGroup) furn.remove(c);              /* keeps the label anchors */
+  }
+  const model = FLOOR_MODELS[key].scene.clone();           /* shares geometry and texture */
+  let mat = null;
+  model.traverse((o) => {
+    if (o.isMesh && o.userData.baked) { if (!mat) mat = o.material.clone(); o.material = mat; }
+  });
+  furn.add(model);
+  return mat;
 }
 
 /* ---------- Rendered room tours ----------
@@ -1852,11 +1916,20 @@ function start(canvas) {
       scene.remove(interior.root);
       interior.owned.forEach((g) => g.dispose());
       interior.pads.forEach((m) => m.material.dispose());
+      interior.mats.forEach((m) => m.dispose());
       interior = null;
       labelLayer.innerHTML = '';
     }
     if (level == null) return;
-    interior = buildInterior(floors.find((f) => f.level === level));
+    const floor = floors.find((f) => f.level === level);
+    const keys = floorModelKeys(floor);
+    if (!keys.every(floorModelReady)) {
+      /* show the boxes now; swap in the Blender model as soon as it arrives (unless the visitor has moved on) */
+      Promise.all(keys.map(loadFloorModel)).then(() => {
+        if (interior && interior.level === level && !interior.model && !roomFocus && tour.hidden && keys.every(floorModelReady)) setInterior(level);
+      });
+    }
+    interior = buildInterior(floor);
     scene.add(interior.root);
     preloadTour();
     interior.labels.forEach((l) => {
@@ -1914,13 +1987,14 @@ function start(canvas) {
     roomSun.position.set(1.6, floorY + 12, 4.2);
     roomSun.target.position.set(0, floorY, 0);
     if (shadowDirty > 0 && interior && interior.root.visible) { renderer.shadowMap.needsUpdate = true; shadowDirty -= 1; }
-    if (bloom) bloom.strength = 0.55 - 0.32 * roomMix;
+    if (bloom) bloom.strength = 0.55 - (interior && interior.model ? 0.45 : 0.32) * roomMix;   /* the baked floors are bright: keep them crisp */
 
     /* Highlight the selected residence on a two-residence floor */
     if (interior && (shownUnit !== ui.unit || shownHover !== hoverUnit)) {
       interior.pads.forEach((m) => {
         const id = m.userData.unitId;
         m.material.emissive.copy(id === ui.unit ? TINT.selected : id === hoverUnit ? TINT.hover : TINT.none);
+        if (m.userData.baked) m.userData.baked.color.setScalar(ui.unit == null || id === ui.unit ? 1 : id === hoverUnit ? 0.86 : 0.68);
       });
       interior.labels.forEach((l) => { if (l.kind === 'unit') l.el.classList.toggle('dim', l.unitId !== ui.unit); });
       shownUnit = ui.unit; shownHover = hoverUnit;
@@ -1951,7 +2025,7 @@ function start(canvas) {
   /* ---- Loop ---- */
   const lookAt = new THREE.Vector3();
   const right = new THREE.Vector3();
-  let last = performance.now(), visible = true;
+  let last = performance.now(), visible = true, modelsRequested = false;
   document.addEventListener('visibilitychange', () => { visible = !document.hidden; if (visible) { last = performance.now(); requestAnimationFrame(frame); } });
 
   function frame(now) {
@@ -1961,6 +2035,7 @@ function start(canvas) {
     const { shot, explore } = targetShot();
     if (exploreActive && !explore) { ui.setHover(null); showTip(null); }
     exploreActive = explore;
+    if (explore && !modelsRequested) { modelsRequested = true; ALL_FLOOR_MODELS.forEach(loadFloorModel); }
     canvas.classList.toggle('can-explore', explore);
     if (!explore) canvas.classList.remove('on-floor');
     if (!inRoom()) canvas.classList.remove('off-plate');
@@ -2009,6 +2084,10 @@ const canvas = document.getElementById('scene');
 try {
   THREE = await import('three');
   ({ mergeGeometries } = await import('three/addons/utils/BufferGeometryUtils.js'));
+  try {
+    ({ GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js'));
+    ({ MeshoptDecoder } = await import('three/addons/libs/meshopt_decoder.module.js'));
+  } catch (e) { GLTFLoader = null; }                         /* the box furniture still works without it */
   try {
     ({ EffectComposer } = await import('three/addons/postprocessing/EffectComposer.js'));
     ({ RenderPass } = await import('three/addons/postprocessing/RenderPass.js'));

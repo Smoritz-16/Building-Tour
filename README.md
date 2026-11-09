@@ -20,3 +20,11 @@ The building, residences and prices are invented. The tour form does not send an
 Click a room name inside a floor (or "View rooms" in the floor details) and the 3D camera dives at the room, then a full-screen rendered fly-in takes over: it starts above the room with the ceiling lifted off and glides down to eye level, like a developer's leasing site. Tabs switch between the living room, kitchen and dining, primary bedroom and primary bath.
 
 The rooms are modelled and rendered in Blender (Cycles) by `tools/render/rooms.py`; `tools/render/encode.sh` turns the frames into the clips in `media/rooms/`. Calder Quay is fictional, so the renders are labelled as representative finishes.
+
+## Furnished floor models
+
+When you fly into a floor, the furnished cutaway is a Blender model rather than boxes drawn in code. `tools/render/floor.py` models each layout (one residence on half a floor with 1, 2 or 3 bedrooms, plus the full-floor sky residences and penthouses) after real high-end waterfront residences: wide-plank oak floors, 24-inch marble tiles in the baths, oak kitchen runs with marble counters and a waterfall island, freestanding soaking tubs, glass-screened showers and standard furniture sizes. It lights the floor with Cycles, bakes the lighting and materials into one texture, and exports `media/floors/*.glb`, which the page draws as-is (no lights needed, so it stays fast). The room labels and click targets come from the same layout in `src/page.html`; if a model can't load, the page falls back to the code-drawn furniture.
+
+```bash
+cd tools/render && ./floors.sh          # needs: pip install bpy (Blender 5.x) and Node for npx
+```
