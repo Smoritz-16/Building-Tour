@@ -175,6 +175,11 @@ main { position: relative; z-index: 2; pointer-events: none; }
 .room-exit svg { width: 16px; height: 16px; }
 
 .detail-actions { display: flex; gap: 8px; }
+.file-notice { position: fixed; left: 50%; bottom: 22px; z-index: 60; transform: translateX(-50%); display: flex; align-items: center; gap: 14px;
+  max-width: min(680px, calc(100vw - 32px)); padding: 12px 12px 12px 18px; border: 1px solid var(--brass); border-radius: 10px; background: #111110; color: var(--ink); font-size: 13px; line-height: 1.45; }
+.file-notice[hidden] { display: none; }
+.file-notice strong { color: var(--brass); font-weight: 600; }
+.file-notice button { flex: none; width: 30px; height: 30px; border: 0; border-radius: 50%; background: rgba(236,231,220,.1); color: var(--ink); font-size: 18px; cursor: pointer; }
 /* Room tour: full-screen rendered fly-in, like a developer's leasing site */
 .tour { position: fixed; inset: 0; z-index: 40; background: #0b0b0c; opacity: 0; transition: opacity .6s ease; }
 .tour[hidden] { display: none; }
@@ -256,6 +261,17 @@ footer { position: relative; z-index: 2; background: #0a0600; border-top: 1px so
 <canvas id="scene" aria-label="3D model of the Calder Quay tower. In the availability section, drag to turn it and select a floor."></canvas>
 <div class="scene-fallback" id="scene-fallback" hidden>The 3D tower needs WebGL and a connection to load. Everything else still works.</div>
 <div class="scene-veil" aria-hidden="true"></div>
+<div class="file-notice" id="file-notice" hidden role="status">
+  <span>You're viewing this page straight from the folder, so the realistic 3D floor models can't load. Double-click <strong>Open Calder Quay.command</strong> in the Building-Tour folder instead.</span>
+  <button type="button" aria-label="Dismiss" id="file-notice-close">&times;</button>
+</div>
+<script>
+  if (location.protocol === 'file:') {
+    var fn = document.getElementById('file-notice');
+    fn.hidden = false;
+    document.getElementById('file-notice-close').onclick = function () { fn.hidden = true; };
+  }
+</script>
 
 <header class="nav">
   <a class="wordmark" href="#top">CALDER<small>QUAY RESIDENCES</small></a>
